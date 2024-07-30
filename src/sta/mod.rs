@@ -227,9 +227,9 @@ impl WifiStation {
                 let cmd = format!(
                     "SET_NETWORK {id} {}",
                     match param {
-                        SetNetwork::Ssid(ssid) => format!("ssid \"{ssid}\""),
+                        SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(&ssid)),
                         SetNetwork::Bssid(bssid) => format!("bssid \"{bssid}\""),
-                        SetNetwork::Psk(psk) => format!("psk \"{psk}\""),
+                        SetNetwork::Psk(psk) => format!("psk {}", conf_escape(&psk)),
                         SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {}", mgmt),
                     }
                 );
@@ -303,6 +303,16 @@ impl WifiStation {
             Request::Shutdown => (), //shutdown is handled at the scope above
         }
         Ok(())
+    }
+}
+
+/// convert to wpa config format idealy a "quoted string"
+/// in case of new-lines, quotes or emoji fall back to hex encoding the whole thing
+fn conf_escape(raw: &str) -> String {
+    if raw.bytes().all(|b| b.is_ascii_graphic() && b != b'"') {
+        format!("\"{raw}\"")
+    } else {
+        hex::encode(raw)
     }
 }
 
