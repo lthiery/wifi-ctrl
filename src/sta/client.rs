@@ -47,6 +47,7 @@ pub(crate) enum Request {
     Status(oneshot::Sender<Result<Status>>),
     Networks(oneshot::Sender<Result<Vec<NetworkResult>>>),
     Scan(oneshot::Sender<Result<ScanResults>>),
+    ScanResults,
     AddNetwork(oneshot::Sender<Result<usize>>),
     SetNetwork(usize, SetNetwork, oneshot::Sender<Result>),
     SaveConfig(oneshot::Sender<Result>),
@@ -75,6 +76,7 @@ impl ShutdownSignal for Request {
             Request::Scan(response) => {
                 let _ = response.send(Err(error::Error::StartupAborted));
             }
+            Request::ScanResults => {}
             Request::AddNetwork(response) => {
                 let _ = response.send(Err(error::Error::StartupAborted));
             }
