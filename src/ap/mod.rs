@@ -122,8 +122,7 @@ impl WifiAp {
         match request {
             Request::Custom(custom, response_channel) => {
                 let _n = socket_handle.socket.send(custom.as_bytes()).await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
+                let data_str = socket_handle.recv_line().await?;
                 debug!("Custom request response: {data_str}");
                 if response_channel.send(Ok(data_str.into())).is_err() {
                     error!("Custom request response channel closed before response sent");
@@ -131,8 +130,7 @@ impl WifiAp {
             }
             Request::Status(response_channel) => {
                 let _n = socket_handle.socket.send(b"STATUS").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
+                let data_str = socket_handle.recv_line().await?;
                 let status = Status::from_response(data_str)?;
 
                 if response_channel.send(Ok(status)).is_err() {
@@ -141,8 +139,7 @@ impl WifiAp {
             }
             Request::Config(response_channel) => {
                 let _n = socket_handle.socket.send(b"GET_CONFIG").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
+                let data_str = socket_handle.recv_line().await?;
                 let config = Config::from_response(data_str)?;
 
                 if response_channel.send(Ok(config)).is_err() {
@@ -171,8 +168,7 @@ impl WifiAp {
         response_channel: oneshot::Sender<Result>,
     ) -> Result {
         let _n = socket_handle.socket.send(request).await?;
-        let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-        let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
+        let data_str = socket_handle.recv_line().await?;
         let response = if data_str == "OK" {
             Ok(())
         } else {

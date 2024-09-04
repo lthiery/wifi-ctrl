@@ -1,10 +1,10 @@
+use super::SocketHandle;
 use super::{config, config::unprintf, error, warn, Result};
 
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
-use tokio::net::UnixDatagram;
 
 #[derive(Serialize, Debug, Clone)]
 /// The result from scanning for networks.
@@ -69,21 +69,19 @@ pub struct NetworkResult {
 }
 
 impl NetworkResult {
-    pub async fn vec_from_str(
-        response: &str,
-        socket: &mut UnixDatagram,
+    pub async fn request_results<const N: usize>(
+        socket_handle: &mut SocketHandle<N>,
     ) -> Result<Vec<NetworkResult>> {
-        let mut buffer = [0; 256];
+        let response = socket_handle.request("LIST_NETWORKS").await?.to_owned();
         let mut results = Vec::new();
         let split = response.split('\n').skip(1);
         for line in split {
             let mut line_split = line.split_whitespace();
             if let Some(network_id) = line_split.next() {
-                let cmd = format!("GET_NETWORK {network_id} ssid");
-                let bytes = cmd.into_bytes();
-                socket.send(&bytes).await?;
-                let n = socket.recv(&mut buffer).await?;
-                let ssid = std::str::from_utf8(&buffer[..n])?.trim_matches('\"');
+                let ssid = socket_handle
+                    .request(&format!("GET_NETWORK {network_id} ssid"))
+                    .await?
+                    .trim_matches('\"');
                 let ssid = unprintf(ssid).map_err(|e| error::Error::ParsingWifiStatus {
                     e,
                     s: ssid.to_string(),
