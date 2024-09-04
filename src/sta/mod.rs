@@ -48,11 +48,17 @@ impl WifiStation {
         for request in deferred_requests {
             let _ = self.self_sender.send(request).await;
         }
-        self.broadcast_sender.send(Broadcast::Ready)?;
+        self.broadcast(Broadcast::Ready);
         tokio::select!(
             resp = unsolicited.run() => resp,
             resp = self.run_internal(unsolicited_receiver, socket_handle) => resp,
         )
+    }
+
+    fn broadcast(&self, event: Broadcast) {
+        if self.broadcast_sender.send(event).is_err() {
+            debug!("broadcast listener closed")
+        }
     }
 
     async fn run_internal(
@@ -82,12 +88,11 @@ impl WifiStation {
                 EventOrRequest::Event(event) => match event {
                     Some(unsolicited_msg) => {
                         debug!("Unsolicited event: {unsolicited_msg:?}");
-                        Self::handle_event(
+                        self.handle_event(
                             &mut socket_handle,
                             unsolicited_msg,
                             &mut scan_requests,
                             &mut select_request,
-                            &mut self.broadcast_sender,
                         )
                         .await?
                     }
@@ -111,11 +116,11 @@ impl WifiStation {
     }
 
     async fn handle_event<const N: usize>(
+        &mut self,
         socket_handle: &mut SocketHandle<N>,
         event: Event,
         scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
         select_request: &mut Option<SelectRequest>,
-        broadcast_sender: &mut broadcast::Sender<Broadcast>,
     ) -> Result {
         match event {
             Event::ScanComplete => {
@@ -133,28 +138,28 @@ impl WifiStation {
                 }
             }
             Event::Connected => {
-                broadcast_sender.send(Broadcast::Connected)?;
+                self.broadcast(Broadcast::Connected);
                 if let Some(sender) = select_request.take() {
                     sender.send(Ok(SelectResult::Success));
                 }
             }
             Event::Disconnected => {
-                broadcast_sender.send(Broadcast::Disconnected)?;
+                self.broadcast(Broadcast::Disconnected);
             }
             Event::NetworkNotFound => {
-                broadcast_sender.send(Broadcast::NetworkNotFound)?;
+                self.broadcast(Broadcast::NetworkNotFound);
                 if let Some(sender) = select_request.take() {
                     sender.send(Ok(SelectResult::NotFound));
                 }
             }
             Event::WrongPsk => {
-                broadcast_sender.send(Broadcast::WrongPsk)?;
+                self.broadcast(Broadcast::WrongPsk);
                 if let Some(sender) = select_request.take() {
                     sender.send(Ok(SelectResult::WrongPsk));
                 }
             }
             Event::Unknown(msg) => {
-                broadcast_sender.send(Broadcast::Unknown(msg))?;
+                self.broadcast(Broadcast::Unknown(msg));
             }
         }
         Ok(())
