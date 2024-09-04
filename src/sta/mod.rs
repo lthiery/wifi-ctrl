@@ -160,10 +160,15 @@ impl WifiStation {
         Ok(())
     }
 
+    async fn add_network<const N: usize>(socket_handle: &mut SocketHandle<N>) -> Result<usize> {
+        let data_str = socket_handle.request("ADD_NETWORK").await?;
+        let network_id = usize::from_str(data_str)?;
+        debug!("wpa_ctrl created network {network_id}");
+        Ok(network_id)
+    }
+
     async fn get_status<const N: usize>(socket_handle: &mut SocketHandle<N>) -> Result<Status> {
-        let _n = socket_handle.socket.send(b"STATUS").await?;
-        let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-        let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
+        let data_str = socket_handle.request("STATUS").await?;
         parse_status(data_str)
     }
 
@@ -197,11 +202,7 @@ impl WifiStation {
                 }
             }
             Request::Networks(response_channel) => {
-                let _n = socket_handle.socket.send(b"LIST_NETWORKS").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
-                let network_list =
-                    NetworkResult::vec_from_str(data_str, &mut socket_handle.socket).await?;
+                let network_list = NetworkResult::request_results(socket_handle).await?;
                 if response_channel.send(Ok(network_list)).is_err() {
                     error!("Scan request response channel closed before response sent");
                 }
@@ -213,14 +214,9 @@ impl WifiStation {
                 }
             }
             Request::AddNetwork(response_channel) => {
-                let _n = socket_handle.socket.send(b"ADD_NETWORK").await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?.trim_end();
-                let network_id = usize::from_str(data_str)?;
-                if response_channel.send(Ok(network_id)).is_err() {
+                let network_id = Self::add_network(socket_handle).await;
+                if response_channel.send(network_id).is_err() {
                     error!("Scan request response channel closed before response sent");
-                } else {
-                    debug!("wpa_ctrl created network {network_id}");
                 }
             }
             Request::SetNetwork(id, param, response) => {

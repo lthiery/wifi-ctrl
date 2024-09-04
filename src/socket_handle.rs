@@ -92,6 +92,19 @@ impl<const N: usize> SocketHandle<N> {
         self.expect_ok_with_default_timeout().await
     }
 
+    pub async fn request(&mut self, req: &str) -> Result<&str> {
+        let n = self.socket.send(req.as_bytes()).await?;
+        if n != req.len() {
+            return Err(error::Error::DidNotWriteAllBytes(n, req.len()));
+        }
+        self.recv_line().await
+    }
+
+    pub async fn recv_line(&mut self) -> Result<&str> {
+        let n = self.socket.recv(&mut self.buffer).await?;
+        Ok(std::str::from_utf8(&self.buffer[..n])?.trim_end())
+    }
+
     async fn expect_ok(&mut self) -> Result {
         match self.socket.recv(&mut self.buffer).await {
             Ok(n) => {
