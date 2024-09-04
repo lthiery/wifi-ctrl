@@ -1,4 +1,5 @@
 use super::*;
+use crate::error::Error::UnexpectedWifiApRepsonse;
 use std::io::ErrorKind;
 use tokio::net::UnixDatagram;
 
@@ -84,12 +85,16 @@ impl<const N: usize> SocketHandle<N> {
         ))
     }
 
-    pub async fn command(&mut self, cmd: &[u8]) -> Result {
+    pub async fn command(&mut self, cmd: &[u8]) -> Result<Result> {
         let n = self.socket.send(cmd).await?;
         if n != cmd.len() {
             return Err(error::Error::DidNotWriteAllBytes(n, cmd.len()));
         }
-        self.expect_ok_with_default_timeout().await
+        match self.expect_ok_with_default_timeout().await {
+            Ok(()) => Ok(Ok(())),
+            Err(e @ UnexpectedWifiApRepsonse(_)) => Ok(Err(e)),
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn request(&mut self, req: &str) -> Result<&str> {
