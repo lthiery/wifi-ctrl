@@ -50,6 +50,7 @@ pub(crate) enum Request {
     AddNetwork(oneshot::Sender<Result<usize>>),
     SetNetwork(usize, SetNetwork, oneshot::Sender<Result>),
     SaveConfig(oneshot::Sender<Result>),
+    ReloadConfig(oneshot::Sender<Result>),
     RemoveNetwork(RemoveNetwork, oneshot::Sender<Result>),
     SelectNetwork(usize, oneshot::Sender<Result<SelectResult>>),
     Shutdown,
@@ -81,6 +82,9 @@ impl ShutdownSignal for Request {
                 let _ = response.send(Err(error::Error::StartupAborted));
             }
             Request::SaveConfig(response) => {
+                let _ = response.send(Err(error::Error::StartupAborted));
+            }
+            Request::ReloadConfig(response) => {
                 let _ = response.send(Err(error::Error::StartupAborted));
             }
             Request::RemoveNetwork(_, response) => {
@@ -199,6 +203,12 @@ impl RequestClient {
     pub async fn save_config(&self) -> Result {
         let (response, request) = oneshot::channel();
         self.send_request(Request::SaveConfig(response)).await?;
+        request.await?
+    }
+
+    pub async fn reload_config(&self) -> Result {
+        let (response, request) = oneshot::channel();
+        self.send_request(Request::ReloadConfig(response)).await?;
         request.await?
     }
 

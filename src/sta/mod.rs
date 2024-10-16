@@ -247,6 +247,13 @@ impl WifiStation {
                 debug!("wpa_ctrl config saved");
                 let _ = response.send(Ok(()));
             }
+            Request::ReloadConfig(response) => {
+                if let Err(e) = socket_handle.command(b"RECONFIGURE").await {
+                    warn!("Error while reloading config: {e}");
+                }
+                debug!("wpa_ctrl config reloaded");
+                let _ = response.send(Ok(()));
+            }
             Request::RemoveNetwork(remove_network, response) => {
                 let str = match remove_network {
                     RemoveNetwork::All => "all".to_string(),
