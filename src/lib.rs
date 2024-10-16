@@ -23,6 +23,7 @@ pub mod error;
 /// WiFi Station (network client) runtime and types
 pub mod sta;
 
+pub(crate) mod config;
 pub(crate) mod socket_handle;
 
 use socket_handle::SocketHandle;

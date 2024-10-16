@@ -122,7 +122,7 @@ impl WifiStation {
                 let _n = socket_handle.socket.send(b"SCAN_RESULTS").await?;
                 let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
                 let data_str = std::str::from_utf8(&socket_handle.buffer[..n])?;
-                let mut scan_results = ScanResult::vec_from_str(data_str)?;
+                let mut scan_results = ScanResult::vec_from_str(data_str);
                 scan_results.sort_by(|a, b| a.signal.cmp(&b.signal));
 
                 let results = Arc::new(scan_results);
