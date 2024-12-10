@@ -6,34 +6,36 @@ use serde::{Deserialize, Serialize};
 pub struct Status {
     pub state: String,
     pub phy: String,
-    pub freq: String,
-    pub num_sta_non_erp: String,
-    pub num_sta_no_short_slot_time: String,
-    pub num_sta_no_short_preamble: String,
-    pub olbc: String,
-    pub num_sta_ht_no_gf: String,
-    pub num_sta_no_ht: String,
-    pub num_sta_ht_20_mhz: String,
-    pub num_sta_ht40_intolerant: String,
-    pub olbc_ht: String,
+    pub freq: u32,
+    pub num_sta_non_erp: u64,
+    pub num_sta_no_short_slot_time: u64,
+    pub num_sta_no_short_preamble: u64,
+    pub olbc: u64,
+    pub num_sta_ht_no_gf: u64,
+    pub num_sta_no_ht: u64,
+    pub num_sta_ht_20_mhz: u64,
+    pub num_sta_ht40_intolerant: u64,
+    pub olbc_ht: u64,
     pub ht_op_mode: String,
-    pub cac_time_seconds: String,
-    pub cac_time_left_seconds: String,
-    pub channel: String,
-    pub secondary_channel: String,
-    pub ieee80211n: String,
-    pub ieee80211ac: String,
-    pub ieee80211ax: String,
-    pub beacon_int: String,
-    pub dtim_period: String,
-    pub ht_caps_info: String,
-    pub ht_mcs_bitmask: String,
+    pub cac_time_seconds: u64,
+    pub cac_time_left_seconds: Option<u64>,
+    pub channel: u64,
+    pub secondary_channel: u64,
+    pub ieee80211n: u64,
+    pub ieee80211ac: u64,
+    pub ieee80211ax: u64,
+    pub beacon_int: u64,
+    pub dtim_period: u64,
+    // missing if not not ieee80211n
+    pub ht_caps_info: Option<String>,
+    pub ht_mcs_bitmask: Option<String>,
+    #[serde(default)] // missing if there are no rates
     pub supported_rates: String,
-    pub max_txpower: String,
+    pub max_txpower: u64,
     pub bss: Vec<String>,
     pub bssid: Vec<String>,
     pub ssid: Vec<String>,
-    pub num_sta: Vec<String>,
+    pub num_sta: Vec<u32>,
 }
 
 impl Status {
@@ -65,8 +67,6 @@ impl Status {
     ///ieee80211ax=0
     ///beacon_int=100
     ///dtim_period=2
-    ///ht_caps_info=foo,
-    ///ht_mcs_bitmask=bar,
     ///supported_rates=02 04 0b 16 0c 12 18 24 30 48 60 6c
     ///max_txpower=20
     ///bss[0]=wlan0
@@ -80,8 +80,9 @@ impl Status {
     ///"#;
     /// let status = Status::from_response(resp).unwrap();
     /// assert_eq!(status.state, "ENABLED");
-    /// assert_eq!(status.freq, "2437");
+    /// assert_eq!(status.freq, 2437);
     /// assert_eq!(status.ssid, vec![r"WiFi-SSID", r#"¯\_(ツ)_/¯"#]);
+    /// assert_eq!(status.num_sta, vec![0, 1]);
     /// ```
     pub fn from_response(response: &str) -> Result<Status> {
         crate::config::from_str(response).map_err(|e| error::Error::ParsingWifiStatus {
@@ -96,12 +97,14 @@ impl Status {
 pub struct Config {
     pub bssid: String,
     pub ssid: String,
-    pub wps_state: bool,
+    pub wps_state: String,
+    #[serde(default)] // missing if zero
     pub wpa: i32,
-    pub key_mgmt: String,
-    pub group_cipher: String,
-    pub rsn_pairwise_cipher: String,
-    pub wpa_pairwise_cipher: String,
+    // missing if WPA is not enabled
+    pub key_mgmt: Option<String>,
+    pub group_cipher: Option<String>,
+    pub rsn_pairwise_cipher: Option<String>,
+    pub wpa_pairwise_cipher: Option<String>,
 }
 
 impl Config {
@@ -119,7 +122,7 @@ impl Config {
     ///wpa_pairwise_cipher=CCMP
     ///"#;
     /// let config = Config::from_response(resp).unwrap();
-    /// assert_eq!(config.wps_state, false);
+    /// assert_eq!(config.wps_state, "disabled");
     /// assert_eq!(config.wpa, 2);
     /// assert_eq!(config.ssid, "WiFi-SSID");
     /// ```
@@ -128,5 +131,77 @@ impl Config {
             e,
             s: response.into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_wpa_psk() {
+        let resp = r#"
+bssid=cc:7b:5c:1a:d2:21
+ssid=\xc2\xaf\\_(\xe3\x83\x84)_/\xc2\xaf
+wps_state=disabled
+wpa=2
+key_mgmt=WPA-PSK
+group_cipher=CCMP
+rsn_pairwise_cipher=CCMP
+        "#;
+        let config = Config::from_response(resp).unwrap();
+        assert_eq!(config.wpa, 2);
+        assert_eq!(config.wps_state, "disabled");
+        assert_eq!(config.ssid, r#"¯\_(ツ)_/¯"#);
+    }
+
+    #[test]
+    fn test_config_wsp_1() {
+        let resp = r#"
+bssid=cc:7b:5c:1a:d2:21
+ssid=MY_SSID
+wps_state=not configured
+passphrase=MY_PASSPHRASE
+psk=8dbbe42cb44f21088fbb9cfbf24dc9b39787d6026d436b01b3ac7d34afb4416d
+wpa=2
+key_mgmt=WPA-PSK
+group_cipher=CCMP
+rsn_pairwise_cipher=CCMP
+        "#;
+        let config = Config::from_response(resp).unwrap();
+        assert_eq!(config.wpa, 2);
+        assert_eq!(config.wps_state, "not configured");
+        assert_eq!(config.ssid, "MY_SSID");
+    }
+
+    #[test]
+    fn test_config_wsp_2() {
+        let resp = r#"
+bssid=cc:7b:5c:1a:d2:21
+ssid=MY_SSID
+wps_state=configured
+passphrase=MY_PASSPHRASE
+psk=8dbbe42cb44f21088fbb9cfbf24dc9b39787d6026d436b01b3ac7d34afb4416d
+wpa=2
+key_mgmt=WPA-PSK
+group_cipher=CCMP
+rsn_pairwise_cipher=CCMP
+        "#;
+        let config = Config::from_response(resp).unwrap();
+        assert_eq!(config.wpa, 2);
+        assert_eq!(config.wps_state, "configured");
+        assert_eq!(config.ssid, "MY_SSID");
+    }
+
+    #[test]
+    fn test_config_open() {
+        let resp = r#"
+bssid=cc:7b:5c:1a:d2:21
+ssid=Wi-Fi
+wps_state=disabled
+        "#;
+        let config = Config::from_response(resp).unwrap();
+        assert_eq!(config.wpa, 0);
+        assert_eq!(config.ssid, "Wi-Fi");
     }
 }

@@ -142,7 +142,7 @@ impl<'de> de::Deserializer<'de> for Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if self.only()?.is_empty() {
+        if self.only()?.is_empty() || self.only()? == "N/A" {
             visitor.visit_none()
         } else {
             visitor.visit_some(self)
@@ -196,7 +196,6 @@ pub(crate) fn unprintf(escaped: &str) -> std::result::Result<String, ConfigError
 
 #[cfg(test)]
 mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
     #[test]
