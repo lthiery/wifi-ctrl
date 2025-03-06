@@ -9,6 +9,7 @@ pub(crate) struct EventSocket {
 #[derive(Debug)]
 pub(crate) enum Event {
     ScanComplete,
+    ScanFailed(String),
     Connected,
     Disconnected,
     NetworkNotFound,
@@ -63,6 +64,8 @@ impl EventSocket {
                     debug!("wpa_ctrl event: {data_str}");
                     if data_str.ends_with("CTRL-EVENT-SCAN-RESULTS") {
                         self.send_event(Event::ScanComplete).await?;
+                    } else if data_str.contains("CTRL-EVENT-SCAN-FAILED") {
+                        self.send_event(Event::ScanFailed(data_str.into())).await?;
                     } else if data_str.contains("CTRL-EVENT-CONNECTED") {
                         self.send_event(Event::Connected).await?;
                     } else if data_str.contains("CTRL-EVENT-DISCONNECTED") {
