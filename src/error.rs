@@ -14,9 +14,6 @@ pub enum SocketError {
     /// Client asked runner to shutdown
     #[error("start-up aborted")]
     StartupAborted,
-    /// Only one of the two control sockets is open, this should not happen
-    #[error("internal event channel unexpectedly closed")]
-    EventChannelClosed,
     /// `RequestClient` dropped without shutting down runner
     #[error("internal client channel unexpectedly closed")]
     ClientChannelClosed,

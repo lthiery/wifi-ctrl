@@ -32,7 +32,7 @@ pub struct WifiAp {
 impl WifiAp {
     pub async fn run(&mut self) -> SocketResult {
         info!("Starting Wifi AP process");
-        let (event_receiver, mut deferred_requests, event_socket) = EventSocket::new(
+        let (mut deferred_requests, event_socket) = EventSocket::new(
             &self.socket_path,
             &mut self.request_receiver,
             &self.attach_options,
@@ -54,10 +54,7 @@ impl WifiAp {
                 .expect("self_sender should never close as same struct owns both ends");
         }
         self.broadcast(Broadcast::Ready);
-        tokio::select!(
-            resp = event_socket.run() => resp,
-            resp = self.run_internal(event_receiver, socket_handle) => resp,
-        )
+        self.run_internal(event_socket, socket_handle).await
     }
 
     fn broadcast(&self, event: Broadcast) {
@@ -68,24 +65,21 @@ impl WifiAp {
 
     async fn run_internal(
         &mut self,
-        mut event_receiver: EventReceiver,
+        mut event_socket: EventSocket,
         mut socket_handle: SocketHandle<2048>,
     ) -> SocketResult {
         enum EventOrRequest {
-            Event(Option<Event>),
+            Event(Event),
             Request(Option<Request>),
         }
 
         loop {
             let event_or_request = tokio::select!(
-                event = event_receiver.recv() => EventOrRequest::Event(event),
+                event = event_socket.recv() => EventOrRequest::Event(event?),
                 request = self.request_receiver.recv() => EventOrRequest::Request(request),
             );
             match event_or_request {
-                EventOrRequest::Event(event) => match event {
-                    Some(event) => self.handle_event(&mut socket_handle, event).await,
-                    None => return Err(error::SocketError::EventChannelClosed),
-                },
+                EventOrRequest::Event(event) => self.handle_event(&mut socket_handle, event).await,
                 EventOrRequest::Request(request) => match request {
                     Some(Request::Shutdown) => return Ok(()),
                     Some(request) => Self::handle_request(&mut socket_handle, request).await?,
