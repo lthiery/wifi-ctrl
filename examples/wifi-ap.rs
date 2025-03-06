@@ -16,8 +16,11 @@ async fn main() -> Result {
         info!("[{:?}] {:?}", i, itf.name);
     }
     let user_input = read_until_break().await;
-    let index = user_input.trim().parse::<usize>()?;
-    let mut setup = ap::WifiSetup::new()?;
+    let index = user_input
+        .trim()
+        .parse::<usize>()
+        .expect("user should enter a number");
+    let mut setup = ap::WifiSetup::new();
 
     let proposed_path = format!("/var/run/hostapd/{}", network_interfaces[index].name);
     info!("Connect to \"{proposed_path}\"? Type full new path or just press enter to accept.");
@@ -31,7 +34,7 @@ async fn main() -> Result {
 
     let broadcast = setup.get_broadcast_receiver();
     let requester = setup.get_request_client();
-    let runtime = setup.complete();
+    let mut runtime = setup.complete();
 
     let (_runtime, _app, _broadcast) = tokio::join!(
         async move {

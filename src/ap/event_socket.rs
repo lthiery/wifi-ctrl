@@ -21,7 +21,7 @@ impl EventSocket {
         socket: P,
         request_receiver: &mut mpsc::Receiver<Request>,
         attach_options: &[String],
-    ) -> Result<(EventReceiver, Vec<Request>, Self)>
+    ) -> SocketResult<(EventReceiver, Vec<Request>, Self)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
@@ -41,15 +41,15 @@ impl EventSocket {
         ))
     }
 
-    async fn send_event(&self, event: Event) -> Result {
+    async fn send_event(&self, event: Event) -> SocketResult {
         self.sender
             .send(event)
             .await
-            .map_err(|_| error::Error::WifiApEventChannelClosed)?;
+            .map_err(|_| error::SocketError::EventChannelClosed)?;
         Ok(())
     }
 
-    pub(crate) async fn run(mut self) -> Result {
+    pub(crate) async fn run(mut self) -> SocketResult {
         let mut command = "ATTACH".to_string();
         for o in &self.attach_options {
             command.push(' ');
@@ -69,33 +69,20 @@ impl EventSocket {
         info!("hostapd event stream registered");
 
         loop {
-            match self
-                .socket_handle
-                .socket
-                .recv(&mut self.socket_handle.buffer)
-                .await
-            {
-                Ok(n) => {
-                    let data_str = std::str::from_utf8(&self.socket_handle.buffer[..n])?.trim_end();
-                    if let Some(n) = data_str.find("AP-STA-DISCONNECTED") {
-                        let index = n + "AP-STA-DISCONNECTED".len();
-                        let mac = &data_str[index..];
-                        self.send_event(Event::ApStaDisconnected(mac.to_string()))
-                            .await?;
-                    } else if let Some(n) = data_str.find("AP-STA-CONNECTED") {
-                        let index = n + "AP-STA-CONNECTED".len();
-                        let mac = &data_str[index..];
-                        self.send_event(Event::ApStaConnected(mac.to_string()))
-                            .await?;
-                    } else {
-                        self.send_event(Event::Unknown(data_str.to_string()))
-                            .await?;
-                    }
-                }
-                Err(e) => {
-                    return Err(error::Error::UnsolicitedIoError(e));
-                }
-            }
+            let bytes = self.socket_handle.recv().await?;
+            let data_str = String::from_utf8_lossy(bytes);
+            let event = if let Some(n) = data_str.find("AP-STA-DISCONNECTED") {
+                let index = n + "AP-STA-DISCONNECTED".len();
+                let mac = &data_str[index..].trim();
+                Event::ApStaDisconnected(mac.to_string())
+            } else if let Some(n) = data_str.find("AP-STA-CONNECTED") {
+                let index = n + "AP-STA-CONNECTED".len();
+                let mac = &data_str[index..].trim();
+                Event::ApStaConnected(mac.to_string())
+            } else {
+                Event::Unknown(data_str.to_string())
+            };
+            self.send_event(event).await?;
         }
     }
 }

@@ -16,14 +16,14 @@ pub struct WifiSetupGeneric<const C: usize = 32, const B: usize = 32> {
 }
 
 impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Self {
         // setup the channel for client requests
         let (self_sender, request_receiver) = mpsc::channel(C);
         let request_client = RequestClient::new(self_sender.clone());
         // setup the channel for broadcasts
         let (broadcast_sender, broadcast_receiver) = broadcast::channel(B);
 
-        Ok(Self {
+        Self {
             wifi: WifiStation {
                 socket_path: PATH_DEFAULT_SERVER.into(),
                 request_receiver,
@@ -33,7 +33,7 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
             },
             request_client,
             broadcast_receiver,
-        })
+        }
     }
 
     pub fn set_socket_path<S: Into<std::path::PathBuf>>(&mut self, path: S) {
@@ -53,5 +53,11 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
 
     pub fn complete(self) -> WifiStation {
         self.wifi
+    }
+}
+
+impl Default for WifiSetupGeneric {
+    fn default() -> Self {
+        Self::new()
     }
 }

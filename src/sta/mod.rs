@@ -1,3 +1,5 @@
+use core::str;
+
 use super::*;
 
 use tokio::time::Duration;
@@ -32,7 +34,7 @@ pub struct WifiStation {
 }
 
 impl WifiStation {
-    pub async fn run(mut self) -> Result {
+    pub async fn run(&mut self) -> SocketResult {
         info!("Starting Wifi Station process");
         let (socket_handle, mut deferred_requests) = SocketHandle::open(
             &self.socket_path,
@@ -62,10 +64,10 @@ impl WifiStation {
     }
 
     async fn run_internal(
-        mut self,
+        &mut self,
         mut unsolicited_receiver: EventReceiver,
         mut socket_handle: SocketHandle<10240>,
-    ) -> Result {
+    ) -> SocketResult {
         // We will collect scan requests and batch respond to them when results are ready
         let mut scan_requests = Vec::new();
         let mut select_request = None;
@@ -91,7 +93,7 @@ impl WifiStation {
                         self.handle_event(unsolicited_msg, &mut scan_requests, &mut select_request)
                             .await
                     }
-                    None => return Err(error::Error::WifiStationEventChannelClosed),
+                    None => return Err(error::SocketError::EventChannelClosed),
                 },
                 EventOrRequest::Request(request) => match request {
                     Some(Request::Shutdown) => return Ok(()),
@@ -104,7 +106,7 @@ impl WifiStation {
                         )
                         .await?;
                     }
-                    None => return Err(error::Error::WifiStationRequestChannelClosed),
+                    None => return Err(error::SocketError::ClientChannelClosed),
                 },
             }
         }
@@ -120,10 +122,9 @@ impl WifiStation {
             Event::ScanComplete => {
                 let _ = self.self_sender.send(Request::ScanResults).await;
             }
-            Event::ScanFailed(s) => {
+            Event::ScanFailed => {
                 while let Some(scan_request) = scan_requests.pop() {
-                    let _ =
-                        scan_request.send(Err(error::Error::UnexpectedWifiApRepsonse(s.clone())));
+                    let _ = scan_request.send(Err(error::ClientError::Failed));
                 }
             }
             Event::Connected => {
@@ -155,9 +156,8 @@ impl WifiStation {
 
     async fn get_status<const N: usize>(
         socket_handle: &mut SocketHandle<N>,
-    ) -> Result<Result<Status>> {
-        let data_str = socket_handle.request("STATUS").await?;
-        Ok(parse_status(data_str))
+    ) -> SocketResult<Result<Status>> {
+        socket_handle.request("STATUS", parse_status).await
     }
 
     async fn handle_request<const N: usize>(
@@ -166,15 +166,11 @@ impl WifiStation {
         request: Request,
         scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
         select_request: &mut Option<SelectRequest>,
-    ) -> Result {
+    ) -> SocketResult {
         debug!("Handling request: {request:?}");
         match request {
             Request::Custom(custom, response_channel) => {
-                let _n = socket_handle.socket.send(custom.as_bytes()).await?;
-                let n = socket_handle.socket.recv(&mut socket_handle.buffer).await?;
-                let data_str = std::str::from_utf8(&socket_handle.buffer[..n])
-                    .map(|s| s.trim_end().to_owned())
-                    .map_err(Into::into);
+                let data_str = socket_handle.request(&custom, TryInto::try_into).await?;
                 debug!("Custom request response: {data_str:?}");
                 let _ = response_channel.send(data_str);
             }
@@ -193,29 +189,26 @@ impl WifiStation {
                     }
                 };
             }
-            Request::ScanResults => match socket_handle.request("SCAN_RESULTS").await {
-                Ok(resp) => {
-                    let scan_results = Arc::new(ScanResult::vec_from_str(resp));
-                    while let Some(scan_request) = scan_requests.pop() {
-                        let _ = scan_request.send(Ok(scan_results.clone()));
-                    }
+            Request::ScanResults => {
+                let scan_results = socket_handle
+                    .request("SCAN_RESULTS", ScanResult::vec_from_str)
+                    .await?;
+                while let Some(scan_request) = scan_requests.pop() {
+                    let _ = scan_request.send(scan_results.clone());
                 }
-                Err(e) => {
-                    scan_requests.clear();
-                    return Err(e);
-                }
-            },
+            }
             Request::Networks(response_channel) => {
                 let network_list = NetworkResult::request_results(socket_handle).await?;
-                let _ = response_channel.send(Ok(network_list));
+                let _ = response_channel.send(network_list);
             }
             Request::Status(response_channel) => {
                 let status = Self::get_status(socket_handle).await?;
                 let _ = response_channel.send(status);
             }
             Request::AddNetwork(response_channel) => {
-                let data_str = socket_handle.request("ADD_NETWORK").await?;
-                let network_id = usize::from_str(data_str).map_err(Into::into);
+                let network_id = socket_handle
+                    .request("ADD_NETWORK", usize::from_str)
+                    .await?;
                 debug!("wpa_ctrl created network {network_id:?}");
                 let _ = response_channel.send(network_id);
             }
@@ -224,12 +217,12 @@ impl WifiStation {
                     "SET_NETWORK {id} {}",
                     match param {
                         SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(&ssid)),
-                        SetNetwork::Bssid(bssid) => format!("bssid \"{bssid}\""),
+                        SetNetwork::Bssid(bssid) => format!("bssid {}", conf_escape(&bssid)),
                         SetNetwork::Psk(psk) => format!("psk {}", conf_escape(&psk)),
                         SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {}", mgmt),
                     }
                 );
-                debug!("wpa_ctrl \"{cmd}\"");
+                debug!("wpa_ctrl {cmd:?}");
                 let bytes = cmd.into_bytes();
                 let _ = response.send(socket_handle.command(&bytes).await?);
             }

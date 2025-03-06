@@ -1,5 +1,5 @@
 use super::*;
-use crate::error::Error::UnexpectedWifiApRepsonse;
+use error::{ClientError, ParseError};
 use std::io::ErrorKind;
 use tokio::net::UnixDatagram;
 
@@ -19,7 +19,7 @@ impl<const N: usize> SocketHandle<N> {
         path: P,
         label: &str,
         request_channel: &mut mpsc::Receiver<S>,
-    ) -> Result<(Self, Vec<S>)>
+    ) -> SocketResult<(Self, Vec<S>)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
         S: ShutdownSignal,
@@ -34,13 +34,13 @@ impl<const N: usize> SocketHandle<N> {
         let socket = tokio::select!(
             resp = async move  {
                 let mut loop_count = 0;
-                let s: Result<UnixDatagram> = loop {
+                let s: SocketResult<UnixDatagram> = loop {
                     match socket.connect(&path) {
                         Ok(()) => break Ok(socket),
                         Err(e) => {
                             // if socket is there but permission denied, fail fast
                             if e.kind() == ErrorKind::PermissionDenied {
-                                break Err(error::Error::PermissionDeniedOpeningSocket(socket_debug.to_string()));
+                                break Err(error::SocketError::PermissionDeniedOpeningSocket(socket_debug.to_string()));
                             }
                             if loop_count % 60 == 0 {
                                 info!("Failed to connect to {socket_debug}, retrying for {} more minutes", RETRY_MINUTES-(loop_count+1)/60);
@@ -54,7 +54,7 @@ impl<const N: usize> SocketHandle<N> {
             } => resp,
             _ = async move {
                 tokio::time::sleep(tokio::time::Duration::from_secs(60*RETRY_MINUTES)).await;
-            } => Err(error::Error::TimeoutOpeningSocket(socket_debug.to_string())),
+            } => Err(error::SocketError::TimeoutOpeningSocket(socket_debug.to_string())),
             _ = async move {
                 loop {
                     if let Some(request) = request_channel.recv().await {
@@ -65,15 +65,8 @@ impl<const N: usize> SocketHandle<N> {
                         }
                     }
                 }
-            } => Err(error::Error::StartupAborted),
+            } => Err(error::SocketError::StartupAborted),
         );
-
-        if let Err(error::Error::StartupAborted) = socket {
-            for request in deferred_requests {
-                request.inform_of_shutdown();
-            }
-            return Err(error::Error::StartupAborted);
-        }
 
         Ok((
             Self {
@@ -85,55 +78,82 @@ impl<const N: usize> SocketHandle<N> {
         ))
     }
 
-    pub async fn command(&mut self, cmd: &[u8]) -> Result<Result> {
+    pub async fn recv(&mut self) -> SocketResult<&[u8]> {
+        let n = self.socket.recv(&mut self.buffer).await?;
+        Ok(&self.buffer[..n])
+    }
+
+    pub async fn command(&mut self, cmd: &[u8]) -> SocketResult<Result> {
         let n = self.socket.send(cmd).await?;
         if n != cmd.len() {
-            return Err(error::Error::DidNotWriteAllBytes(n, cmd.len()));
+            return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, cmd.len())));
         }
-        match self.expect_ok_with_default_timeout().await {
-            Ok(()) => Ok(Ok(())),
-            Err(e @ UnexpectedWifiApRepsonse(_)) => Ok(Err(e)),
-            Err(e) => Err(e),
-        }
+        self.expect_ok_with_default_timeout().await
     }
 
-    pub async fn request(&mut self, req: &str) -> Result<&str> {
+    pub(crate) async fn request<'a, T, E, F>(
+        &'a mut self,
+        req: &str,
+        parse: F,
+    ) -> SocketResult<Result<T>>
+    where
+        ParseError: From<E>,
+        F: FnOnce(&'a str) -> std::result::Result<T, E>,
+    {
         let n = self.socket.send(req.as_bytes()).await?;
         if n != req.len() {
-            return Err(error::Error::DidNotWriteAllBytes(n, req.len()));
+            return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, req.len())));
         }
-        self.recv_line().await
+        self.parse_resp(parse).await
     }
 
-    pub async fn recv_line(&mut self) -> Result<&str> {
-        let n = self.socket.recv(&mut self.buffer).await?;
-        Ok(std::str::from_utf8(&self.buffer[..n])?.trim_end())
-    }
-
-    async fn expect_ok(&mut self) -> Result {
-        match self.socket.recv(&mut self.buffer).await {
-            Ok(n) => {
-                let data_str = std::str::from_utf8(&self.buffer[..n])?.trim_end();
-                if data_str.trim() == "OK" {
-                    Ok(())
+    async fn parse_resp<'a, T, E, F>(&'a mut self, parse: F) -> SocketResult<Result<T>>
+    where
+        ParseError: From<E>,
+        F: FnOnce(&'a str) -> std::result::Result<T, E>,
+    {
+        let bytes = self.recv().await?;
+        let str = std::str::from_utf8(bytes).map(str::trim_end);
+        Ok(str
+            .map_err(Into::<ParseError>::into)
+            .and_then(|s| parse(s).map_err(Into::<ParseError>::into))
+            .map_err(|error| {
+                if str == Ok("FAIL") {
+                    ClientError::Failed
                 } else {
-                    Err(error::Error::UnexpectedWifiApRepsonse(data_str.into()))
+                    ClientError::ParsingResponse {
+                        error,
+                        failed_response: String::from_utf8_lossy(bytes).to_string(),
+                    }
                 }
-            }
-            Err(e) => Err(error::Error::UnsolicitedIoError(e)),
-        }
+            }))
     }
 
-    async fn expect_ok_with_default_timeout(&mut self) -> Result {
+    async fn expect_ok(&mut self) -> SocketResult<Result> {
+        self.parse_resp(|data| {
+            // Scan (and only scan) return FAIL-BUSY when already scanning
+            if data == "OK" || data == "FAIL-BUSY" {
+                Ok(())
+            } else {
+                Err(error::ParseError::NotOK)
+            }
+        })
+        .await
+    }
+
+    async fn expect_ok_with_default_timeout(&mut self) -> SocketResult<Result> {
         self.expect_ok_with_timeout(tokio::time::Duration::from_secs(1))
             .await
     }
 
-    pub async fn expect_ok_with_timeout(&mut self, timeout: tokio::time::Duration) -> Result {
+    pub async fn expect_ok_with_timeout(
+        &mut self,
+        timeout: tokio::time::Duration,
+    ) -> SocketResult<Result> {
         tokio::select!(
             resp = self.expect_ok() => resp,
             _ =
-                tokio::time::sleep(timeout) => Err(error::Error::Timeout)
+                tokio::time::sleep(timeout) => Ok(Err(error::ClientError::Timeout))
         )
     }
 }
