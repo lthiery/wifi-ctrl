@@ -27,11 +27,12 @@ pub(crate) mod config;
 pub(crate) mod socket_handle;
 
 use socket_handle::SocketHandle;
-pub type Result<T = ()> = std::result::Result<T, error::Error>;
+pub type Result<T = ()> = std::result::Result<T, error::ClientError>;
+pub type SocketResult<T = ()> = std::result::Result<T, error::SocketError>;
+pub type ParseResult<T = ()> = std::result::Result<T, error::ParseError>;
 
 use log::{debug, error, info, warn};
 
 pub(crate) trait ShutdownSignal {
     fn is_shutdown(&self) -> bool;
-    fn inform_of_shutdown(self);
 }

@@ -1,10 +1,12 @@
-use super::SocketHandle;
-use super::{config, config::unprintf, error, warn, Result};
+use super::error::ParseError;
+use super::{config, config::unprintf, warn, Result, SocketHandle};
+use super::{ParseResult, SocketResult};
 
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
+use std::sync::Arc;
 
 #[derive(Serialize, Debug, Clone)]
 /// The result from scanning for networks.
@@ -41,22 +43,19 @@ impl ScanResult {
     ///let results = ScanResult::vec_from_str(r#"bssid / frequency / signal level / flags / ssid
     ///00:5f:67:90:da:64	2417	-35	[WPA-PSK-CCMP][WPA2-PSK-CCMP][ESS]	TP-Link DA64
     ///e0:91:f5:7d:11:c0	2462	-33	[WPA2-PSK-CCMP][WPS][ESS]	¯\\_(\xe3\x83\x84)_/¯
-    ///"#);
+    ///"#).unwrap();
     ///assert_eq!(results[0].mac, "00:5f:67:90:da:64");
     ///assert_eq!(results[0].name, "TP-Link DA64");
     ///assert_eq!(results[1].signal, -33);
     ///assert_eq!(results[1].name, r#"¯\_(ツ)_/¯"#);
     ///```
-    pub fn vec_from_str(response: &str) -> Vec<ScanResult> {
+    pub fn vec_from_str(response: &str) -> ParseResult<Arc<Vec<ScanResult>>> {
         let mut results = Vec::new();
         for line in response.lines().skip(1) {
-            if let Some(scan_result) = ScanResult::from_line(line) {
-                results.push(scan_result);
-            } else {
-                warn!("Invalid result from scan: {line}");
-            }
+            results.push(ScanResult::from_line(line).ok_or(ParseError::ScanResult)?);
         }
-        results
+        results.sort_by(|a, b| a.signal.cmp(&b.signal));
+        Ok(Arc::new(results))
     }
 }
 
@@ -68,25 +67,35 @@ pub struct NetworkResult {
     pub flags: String,
 }
 
+fn parse_get_network(resp: &str) -> ParseResult<String> {
+    let escaped = resp.trim_matches('\"');
+    Ok(unprintf(escaped)?)
+}
+
 impl NetworkResult {
     pub async fn request_results<const N: usize>(
         socket_handle: &mut SocketHandle<N>,
-    ) -> Result<Vec<NetworkResult>> {
-        let response = socket_handle.request("LIST_NETWORKS").await?.to_owned();
+    ) -> SocketResult<Result<Vec<NetworkResult>>> {
+        let response: String = match socket_handle
+            .request("LIST_NETWORKS", TryInto::try_into)
+            .await?
+        {
+            Ok(x) => x,
+            Err(e) => return Ok(Err(e)),
+        };
         let mut results = Vec::new();
         let split = response.split('\n').skip(1);
         for line in split {
             let mut line_split = line.split_whitespace();
             if let Some(network_id) = line_split.next() {
-                let ssid = socket_handle
-                    .request(&format!("GET_NETWORK {network_id} ssid"))
-                    .await?
-                    .trim_matches('\"');
-                let ssid = unprintf(ssid).map_err(|e| error::Error::ParsingWifiStatus {
-                    e,
-                    s: ssid.to_string(),
-                })?;
                 if let Ok(network_id) = usize::from_str(network_id) {
+                    let ssid = match socket_handle
+                        .request(&format!("GET_NETWORK {network_id} ssid"), parse_get_network)
+                        .await?
+                    {
+                        Ok(x) => x,
+                        Err(e) => return Ok(Err(e)),
+                    };
                     if let Some(flags) = line_split.last() {
                         results.push(NetworkResult {
                             flags: flags.into(),
@@ -99,18 +108,15 @@ impl NetworkResult {
                 }
             }
         }
-        Ok(results)
+        Ok(Ok(results))
     }
 }
 
 /// A HashMap of what is returned when running `wpa_cli status`.
 pub type Status = HashMap<String, String>;
 
-pub(crate) fn parse_status(response: &str) -> Result<Status> {
-    config::from_str(response).map_err(|e| error::Error::ParsingWifiStatus {
-        e,
-        s: response.into(),
-    })
+pub(crate) fn parse_status(response: &str) -> ParseResult<Status> {
+    Ok(config::from_str(response)?)
 }
 
 #[derive(Debug)]

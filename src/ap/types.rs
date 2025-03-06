@@ -1,4 +1,4 @@
-use super::{error, Result};
+use super::config::ConfigError;
 use serde::{Deserialize, Serialize};
 
 /// Status of the WiFi Station
@@ -84,11 +84,8 @@ impl Status {
     /// assert_eq!(status.ssid, vec![r"WiFi-SSID", r#"¯\_(ツ)_/¯"#]);
     /// assert_eq!(status.num_sta, vec![0, 1]);
     /// ```
-    pub fn from_response(response: &str) -> Result<Status> {
-        crate::config::from_str(response).map_err(|e| error::Error::ParsingWifiStatus {
-            e,
-            s: response.into(),
-        })
+    pub fn from_response(response: &str) -> std::result::Result<Self, ConfigError> {
+        crate::config::from_str(response)
     }
 }
 
@@ -126,11 +123,8 @@ impl Config {
     /// assert_eq!(config.wpa, 2);
     /// assert_eq!(config.ssid, "WiFi-SSID");
     /// ```
-    pub fn from_response(response: &str) -> Result<Config> {
-        crate::config::from_str(response).map_err(|e| error::Error::ParsingWifiConfig {
-            e,
-            s: response.into(),
-        })
+    pub fn from_response(response: &str) -> std::result::Result<Self, ConfigError> {
+        crate::config::from_str(response)
     }
 }
 

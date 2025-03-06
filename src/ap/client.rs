@@ -15,26 +15,6 @@ impl ShutdownSignal for Request {
     fn is_shutdown(&self) -> bool {
         matches!(self, Request::Shutdown)
     }
-    fn inform_of_shutdown(self) {
-        match self {
-            Request::Custom(_, response) => {
-                let _ = response.send(Err(error::Error::StartupAborted));
-            }
-            Request::Status(response) => {
-                let _ = response.send(Err(error::Error::StartupAborted));
-            }
-            Request::Config(response) => {
-                let _ = response.send(Err(error::Error::StartupAborted));
-            }
-            Request::Enable(response) | Request::Disable(response) => {
-                let _ = response.send(Err(error::Error::StartupAborted));
-            }
-            Request::SetValue(_, _, response) => {
-                let _ = response.send(Err(error::Error::StartupAborted));
-            }
-            Request::Shutdown => {}
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -48,56 +28,46 @@ impl RequestClient {
         RequestClient { sender }
     }
 
-    async fn send_request(&self, request: Request) -> Result {
-        self.sender
-            .send(request)
-            .await
-            .map_err(|_| error::Error::WifiApRequestChannelClosed)?;
-        Ok(())
-    }
-
     pub async fn send_custom(&self, custom: String) -> Result<String> {
         let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::Custom(custom, response))
-            .await
-            .map_err(|_| error::Error::WifiApRequestChannelClosed)?;
+        self.sender.send(Request::Custom(custom, response)).await?;
         request.await?
     }
 
     pub async fn get_status(&self) -> Result<Status> {
         let (response, request) = oneshot::channel();
-        self.send_request(Request::Status(response)).await?;
+        self.sender.send(Request::Status(response)).await?;
         request.await?
     }
 
     pub async fn get_config(&self) -> Result<Config> {
         let (response, request) = oneshot::channel();
-        self.send_request(Request::Config(response)).await?;
+        self.sender.send(Request::Config(response)).await?;
         request.await?
     }
 
     pub async fn enable(&self) -> Result {
         let (response, request) = oneshot::channel();
-        self.send_request(Request::Enable(response)).await?;
+        self.sender.send(Request::Enable(response)).await?;
         request.await?
     }
 
     pub async fn disable(&self) -> Result {
         let (response, request) = oneshot::channel();
-        self.send_request(Request::Disable(response)).await?;
+        self.sender.send(Request::Disable(response)).await?;
         request.await?
     }
 
     pub async fn set_value(&self, key: &str, value: &str) -> Result {
         let (response, request) = oneshot::channel();
-        self.send_request(Request::SetValue(key.into(), value.into(), response))
+        self.sender
+            .send(Request::SetValue(key.into(), value.into(), response))
             .await?;
         request.await?
     }
 
     pub async fn shutdown(&self) -> Result {
-        self.send_request(Request::Shutdown).await
+        Ok(self.sender.send(Request::Shutdown).await?)
     }
 }
 

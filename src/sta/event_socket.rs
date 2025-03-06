@@ -9,7 +9,7 @@ pub(crate) struct EventSocket {
 #[derive(Debug)]
 pub(crate) enum Event {
     ScanComplete,
-    ScanFailed(String),
+    ScanFailed,
     Connected,
     Disconnected,
     NetworkNotFound,
@@ -23,7 +23,7 @@ impl EventSocket {
     pub(crate) async fn new<P>(
         socket: P,
         request_receiver: &mut mpsc::Receiver<Request>,
-    ) -> Result<(EventReceiver, Vec<Request>, Self)>
+    ) -> SocketResult<(EventReceiver, Vec<Request>, Self)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
@@ -41,49 +41,39 @@ impl EventSocket {
         ))
     }
 
-    async fn send_event(&self, event: Event) -> Result {
+    async fn send_event(&self, event: Event) -> SocketResult {
         self.sender
             .send(event)
             .await
-            .map_err(|_| error::Error::WifiStationEventChannelClosed)?;
+            .map_err(|_| error::SocketError::EventChannelClosed)?;
         Ok(())
     }
 
-    pub(crate) async fn run(mut self) -> Result {
+    pub(crate) async fn run(mut self) -> SocketResult {
         info!("wpa_ctrl attempting attach");
         self.socket_handle.socket.send(b"ATTACH").await?;
         loop {
-            match self
-                .socket_handle
-                .socket
-                .recv(&mut self.socket_handle.buffer)
-                .await
+            let bytes = self.socket_handle.recv().await?;
+            let data_str = String::from_utf8_lossy(bytes);
+            debug!("wpa_ctrl event: {data_str}");
+            let event = if data_str.trim_end().ends_with("CTRL-EVENT-SCAN-RESULTS") {
+                Event::ScanComplete
+            } else if data_str.contains("CTRL-EVENT-SCAN-FAILED") {
+                Event::ScanFailed
+            } else if data_str.contains("CTRL-EVENT-CONNECTED") {
+                Event::Connected
+            } else if data_str.contains("CTRL-EVENT-DISCONNECTED") {
+                Event::Disconnected
+            } else if data_str.contains("CTRL-EVENT-NETWORK-NOT-FOUND") {
+                Event::NetworkNotFound
+            } else if data_str.contains("CTRL-EVENT-SSID-TEMP-DISABLED")
+                && data_str.contains("reason=WRONG_KEY")
             {
-                Ok(n) => {
-                    let data_str = std::str::from_utf8(&self.socket_handle.buffer[..n])?.trim_end();
-                    debug!("wpa_ctrl event: {data_str}");
-                    if data_str.ends_with("CTRL-EVENT-SCAN-RESULTS") {
-                        self.send_event(Event::ScanComplete).await?;
-                    } else if data_str.contains("CTRL-EVENT-SCAN-FAILED") {
-                        self.send_event(Event::ScanFailed(data_str.into())).await?;
-                    } else if data_str.contains("CTRL-EVENT-CONNECTED") {
-                        self.send_event(Event::Connected).await?;
-                    } else if data_str.contains("CTRL-EVENT-DISCONNECTED") {
-                        self.send_event(Event::Disconnected).await?;
-                    } else if data_str.contains("CTRL-EVENT-NETWORK-NOT-FOUND") {
-                        self.send_event(Event::NetworkNotFound).await?;
-                    } else if data_str.contains("CTRL-EVENT-SSID-TEMP-DISABLED")
-                        && data_str.contains("reason=WRONG_KEY")
-                    {
-                        self.send_event(Event::WrongPsk).await?;
-                    } else {
-                        self.send_event(Event::Unknown(data_str.into())).await?;
-                    }
-                }
-                Err(e) => {
-                    return Err(error::Error::UnsolicitedIoError(e));
-                }
-            }
+                Event::WrongPsk
+            } else {
+                Event::Unknown(data_str.into())
+            };
+            self.send_event(event).await?;
         }
     }
 }
