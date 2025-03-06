@@ -44,17 +44,14 @@ impl WifiStation {
         .await?;
         // We start up a separate socket for receiving the "unexpected" events that
         // gets forwarded to us via the unsolicited_receiver
-        let (unsolicited_receiver, next_deferred_requests, unsolicited) =
+        let (next_deferred_requests, unsolicited) =
             EventSocket::new(&self.socket_path, &mut self.request_receiver).await?;
         deferred_requests.extend(next_deferred_requests);
         for request in deferred_requests {
             let _ = self.self_sender.send(request).await;
         }
         self.broadcast(Broadcast::Ready);
-        tokio::select!(
-            resp = unsolicited.run() => resp,
-            resp = self.run_internal(unsolicited_receiver, socket_handle) => resp,
-        )
+        self.run_internal(unsolicited, socket_handle).await
     }
 
     fn broadcast(&self, event: Broadcast) {
@@ -65,7 +62,7 @@ impl WifiStation {
 
     async fn run_internal(
         &mut self,
-        mut unsolicited_receiver: EventReceiver,
+        mut unsolicited: EventSocket,
         mut socket_handle: SocketHandle<10240>,
     ) -> SocketResult {
         // We will collect scan requests and batch respond to them when results are ready
@@ -73,13 +70,13 @@ impl WifiStation {
         let mut select_request = None;
         loop {
             enum EventOrRequest {
-                Event(Option<Event>),
+                Event(Event),
                 Request(Option<Request>),
             }
 
             let event_or_request = tokio::select!(
-                unsolicited_msg = unsolicited_receiver.recv() => {
-                    EventOrRequest::Event(unsolicited_msg)
+                unsolicited_msg = unsolicited.recv() => {
+                    EventOrRequest::Event(unsolicited_msg?)
                 },
                 request = self.request_receiver.recv() => {
                     EventOrRequest::Request(request)
@@ -87,14 +84,11 @@ impl WifiStation {
             );
 
             match event_or_request {
-                EventOrRequest::Event(event) => match event {
-                    Some(unsolicited_msg) => {
-                        debug!("Unsolicited event: {unsolicited_msg:?}");
-                        self.handle_event(unsolicited_msg, &mut scan_requests, &mut select_request)
-                            .await
-                    }
-                    None => return Err(error::SocketError::EventChannelClosed),
-                },
+                EventOrRequest::Event(unsolicited_msg) => {
+                    debug!("Unsolicited event: {unsolicited_msg:?}");
+                    self.handle_event(unsolicited_msg, &mut scan_requests, &mut select_request)
+                        .await
+                }
                 EventOrRequest::Request(request) => match request {
                     Some(Request::Shutdown) => return Ok(()),
                     Some(request) => {
