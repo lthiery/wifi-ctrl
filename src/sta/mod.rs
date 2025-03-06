@@ -88,7 +88,7 @@ impl WifiStation {
                 EventOrRequest::Event(event) => match event {
                     Some(unsolicited_msg) => {
                         debug!("Unsolicited event: {unsolicited_msg:?}");
-                        self.handle_event(unsolicited_msg, &mut select_request)
+                        self.handle_event(unsolicited_msg, &mut scan_requests, &mut select_request)
                             .await
                     }
                     None => return Err(error::Error::WifiStationEventChannelClosed),
@@ -110,10 +110,21 @@ impl WifiStation {
         }
     }
 
-    async fn handle_event(&mut self, event: Event, select_request: &mut Option<SelectRequest>) {
+    async fn handle_event(
+        &mut self,
+        event: Event,
+        scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
+        select_request: &mut Option<SelectRequest>,
+    ) {
         match event {
             Event::ScanComplete => {
                 let _ = self.self_sender.send(Request::ScanResults).await;
+            }
+            Event::ScanFailed(s) => {
+                while let Some(scan_request) = scan_requests.pop() {
+                    let _ =
+                        scan_request.send(Err(error::Error::UnexpectedWifiApRepsonse(s.clone())));
+                }
             }
             Event::Connected => {
                 self.broadcast(Broadcast::Connected);
