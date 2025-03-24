@@ -12,9 +12,6 @@ pub enum SelectResult {
     Success,
     WrongPsk,
     NotFound,
-    PendingSelect,
-    InvalidNetworkId,
-    Timeout,
     AlreadyConnected,
 }
 
@@ -26,9 +23,6 @@ impl fmt::Display for SelectResult {
             SelectResult::Success => "success",
             SelectResult::WrongPsk => "wrong_psk",
             SelectResult::NotFound => "network_not_found",
-            SelectResult::PendingSelect => "select_already_pending",
-            SelectResult::InvalidNetworkId => "invalid_network_id",
-            SelectResult::Timeout => "select_timeout",
             SelectResult::AlreadyConnected => "already_connected",
         };
         write!(f, "{s}")

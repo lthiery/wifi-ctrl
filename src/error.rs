@@ -48,6 +48,8 @@ pub enum ClientError {
     /// The control socket is not connected at the moment, reconnect and try again
     #[error("Runner task not runnning")]
     RunnerNotRunning,
+    #[error("Select already pending")]
+    PendingSelect,
 }
 
 /// A sub error of [`ClientError`] returned when there is a problem parsing the reponse from
