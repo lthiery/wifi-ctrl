@@ -1,5 +1,7 @@
 use core::str;
 
+use crate::error::ClientError;
+
 use super::*;
 
 use tokio::time::Duration;
@@ -170,7 +172,7 @@ impl WifiStation {
             }
             Request::SelectTimeout => {
                 if let Some(sender) = select_request.take() {
-                    sender.send(Ok(SelectResult::Timeout));
+                    sender.send(Err(ClientError::Timeout));
                 }
             }
             Request::Scan(response_channel) => {
@@ -239,44 +241,33 @@ impl WifiStation {
                 let _ = response.send(socket_handle.command(&bytes).await?);
             }
             Request::SelectNetwork(id, response_sender) => {
-                let response_sender = match select_request {
+                match select_request {
                     None => {
                         let cmd = format!("SELECT_NETWORK {id}");
                         let bytes = cmd.into_bytes();
                         if let Err(e) = socket_handle.command(&bytes).await? {
                             warn!("Error while selecting network {id}: {e}");
-                            let _ = response_sender.send(Ok(SelectResult::InvalidNetworkId));
-                            None
+                            let _ = response_sender.send(Err(e));
                         } else {
                             debug!("wpa_ctrl selected network {id}");
                             let status = Self::get_status(socket_handle).await?.unwrap_or_default();
-                            if let Some(current_id) = status.get("id") {
-                                if current_id == &id.to_string() {
-                                    let _ =
-                                        response_sender.send(Ok(SelectResult::AlreadyConnected));
-                                    None
-                                } else {
-                                    Some(response_sender)
-                                }
+                            if status.get("id") == Some(&id.to_string()) {
+                                let _ = response_sender.send(Ok(SelectResult::AlreadyConnected));
                             } else {
-                                Some(response_sender)
+                                *select_request = Some(SelectRequest::new(
+                                    self.self_sender.clone(),
+                                    response_sender,
+                                    self.select_timeout,
+                                ));
                             }
                         }
                     }
                     Some(_) => {
                         warn!("Select request already pending! Dropping this one.");
-                        let _ = response_sender.send(Ok(SelectResult::PendingSelect));
+                        let _ = response_sender.send(Err(ClientError::PendingSelect));
                         debug!("wpa_ctrl removed network {id}");
-                        None
                     }
                 };
-                if let Some(response_sender) = response_sender {
-                    *select_request = Some(SelectRequest::new(
-                        self.self_sender.clone(),
-                        response_sender,
-                        self.select_timeout,
-                    ));
-                }
             }
             Request::Shutdown => (), //shutdown is handled at the scope above
         }
