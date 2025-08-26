@@ -113,7 +113,7 @@ impl<const N: usize> SocketHandle<N> {
         F: FnOnce(&'a str) -> std::result::Result<T, E>,
     {
         let bytes = self.recv().await?;
-        let str = std::str::from_utf8(bytes).map(str::trim_end);
+        let str = std::str::from_utf8(bytes).map(|r| r.trim_end_matches('\n'));
         Ok(str
             .map_err(Into::<ParseError>::into)
             .and_then(|s| parse(s).map_err(Into::<ParseError>::into))
