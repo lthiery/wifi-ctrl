@@ -76,118 +76,79 @@ impl RequestClient {
         RequestClient { sender }
     }
 
-    pub async fn send_custom(&self, custom: String) -> Result<String> {
+    async fn request<T>(
+        &self,
+        make: impl FnOnce(oneshot::Sender<Result<T>>) -> Request,
+    ) -> Result<T> {
         let (response, request) = oneshot::channel();
-        self.sender.send(Request::Custom(custom, response)).await?;
+        self.sender.send(make(response)).await?;
         request.await?
+    }
+
+    pub async fn send_custom(&self, custom: String) -> Result<String> {
+        self.request(|response| Request::Custom(custom, response))
+            .await
     }
 
     pub async fn get_scan(&self) -> Result<Arc<Vec<ScanResult>>> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Scan(response)).await?;
-        request.await?
+        self.request(Request::Scan).await
     }
 
     pub async fn get_networks(&self) -> Result<Vec<NetworkResult>> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Networks(response)).await?;
-        request.await?
+        self.request(Request::Networks).await
     }
 
     pub async fn get_status(&self) -> Result<Status> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Status(response)).await?;
-        request.await?
+        self.request(Request::Status).await
     }
 
     pub async fn add_network(&self) -> Result<usize> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::AddNetwork(response)).await?;
-        request.await?
+        self.request(Request::AddNetwork).await
     }
 
     pub async fn set_network_psk(&self, network_id: usize, psk: String) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SetNetwork(
-                network_id,
-                SetNetwork::Psk(psk),
-                response,
-            ))
-            .await?;
-        request.await?
+        self.request(|response| Request::SetNetwork(network_id, SetNetwork::Psk(psk), response))
+            .await
     }
 
     pub async fn set_network_ssid(&self, network_id: usize, ssid: String) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SetNetwork(
-                network_id,
-                SetNetwork::Ssid(ssid),
-                response,
-            ))
-            .await?;
-        request.await?
+        self.request(|response| Request::SetNetwork(network_id, SetNetwork::Ssid(ssid), response))
+            .await
     }
 
     pub async fn set_network_bssid(&self, network_id: usize, bssid: String) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SetNetwork(
-                network_id,
-                SetNetwork::Bssid(bssid),
-                response,
-            ))
-            .await?;
-        request.await?
+        self.request(|response| Request::SetNetwork(network_id, SetNetwork::Bssid(bssid), response))
+            .await
     }
 
     pub async fn set_network_keymgmt(&self, network_id: usize, mgmt: KeyMgmt) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SetNetwork(
-                network_id,
-                SetNetwork::KeyMgmt(mgmt),
-                response,
-            ))
-            .await?;
-        request.await?
+        self.request(|response| {
+            Request::SetNetwork(network_id, SetNetwork::KeyMgmt(mgmt), response)
+        })
+        .await
     }
 
     pub async fn save_config(&self) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::SaveConfig(response)).await?;
-        request.await?
+        self.request(Request::SaveConfig).await
     }
 
     pub async fn reload_config(&self) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::ReloadConfig(response)).await?;
-        request.await?
+        self.request(Request::ReloadConfig).await
     }
 
     pub async fn remove_network(&self, id: usize) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::RemoveNetwork(RemoveNetwork::Id(id), response))
-            .await?;
-        request.await?
+        self.request(|response| Request::RemoveNetwork(RemoveNetwork::Id(id), response))
+            .await
     }
 
     pub async fn remove_all_networks(&self) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::RemoveNetwork(RemoveNetwork::All, response))
-            .await?;
-        request.await?
+        self.request(|response| Request::RemoveNetwork(RemoveNetwork::All, response))
+            .await
     }
 
     pub async fn select_network(&self, network_id: usize) -> Result<SelectResult> {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SelectNetwork(network_id, response))
-            .await?;
-        request.await?
+        self.request(|response| Request::SelectNetwork(network_id, response))
+            .await
     }
 
     pub async fn shutdown(&self) -> Result {
