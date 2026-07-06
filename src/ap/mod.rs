@@ -28,6 +28,10 @@ pub struct WifiAp {
     self_sender: mpsc::Sender<Request>,
     /// How long to wait for a reply to a control command/request
     command_timeout: std::time::Duration,
+    /// How many times to retry the ATTACH/LOG_LEVEL handshake before giving up
+    attach_retries: usize,
+    /// How long to wait between attach handshake attempts
+    attach_retry_delay: std::time::Duration,
 }
 
 impl WifiAp {
@@ -38,6 +42,8 @@ impl WifiAp {
             &mut self.request_receiver,
             &self.attach_options,
             self.command_timeout,
+            self.attach_retries,
+            self.attach_retry_delay,
         )
         .await?;
         // We start up a separate socket for receiving the "unexpected" events that
