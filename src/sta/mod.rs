@@ -31,6 +31,8 @@ pub struct WifiStation {
     self_sender: mpsc::Sender<Request>,
     /// Timeout duration in case no valid select response is received
     select_timeout: Duration,
+    /// How long to wait for a reply to a control command/request
+    command_timeout: Duration,
 }
 
 impl WifiStation {
@@ -40,12 +42,17 @@ impl WifiStation {
             &self.socket_path,
             "mapper_wpa_ctrl_sync.sock",
             &mut self.request_receiver,
+            self.command_timeout,
         )
         .await?;
         // We start up a separate socket for receiving the "unexpected" events that
         // gets forwarded to us via the unsolicited_receiver
-        let (next_deferred_requests, unsolicited) =
-            EventSocket::new(&self.socket_path, &mut self.request_receiver).await?;
+        let (next_deferred_requests, unsolicited) = EventSocket::new(
+            &self.socket_path,
+            &mut self.request_receiver,
+            self.command_timeout,
+        )
+        .await?;
         deferred_requests.extend(next_deferred_requests);
         for request in deferred_requests {
             self.self_sender
