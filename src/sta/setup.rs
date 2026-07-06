@@ -1,5 +1,10 @@
 use super::*;
 
+/// Default time to wait for a reply to a control command/request before giving
+/// up. Chosen to comfortably cover slower wpa_supplicant operations while still
+/// unblocking the single-task runtime if a reply never arrives.
+const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// A convenient default type for setting up the WiFi Station process.
 pub type WifiSetup = WifiSetupGeneric<32, 32>;
 
@@ -30,6 +35,7 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
                 broadcast_sender,
                 self_sender,
                 select_timeout: Duration::from_secs(10),
+                command_timeout: DEFAULT_COMMAND_TIMEOUT,
             },
             request_client,
             broadcast_receiver,
@@ -42,6 +48,12 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
 
     pub fn set_select_timeout(&mut self, timeout: Duration) {
         self.wifi.select_timeout = timeout;
+    }
+
+    /// Set how long to wait for a reply to a control command/request before
+    /// giving up with [`ClientError::Timeout`](crate::error::ClientError::Timeout).
+    pub fn set_command_timeout(&mut self, timeout: Duration) {
+        self.wifi.command_timeout = timeout;
     }
 
     pub fn get_broadcast_receiver(&self) -> BroadcastReceiver {

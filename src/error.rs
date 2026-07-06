@@ -23,6 +23,9 @@ pub enum SocketError {
     /// Permission denied opening control socket
     #[error("permission denied opening socket {0}")]
     PermissionDeniedOpeningSocket(String),
+    /// A control command kept failing while registering the event stream, even after retrying
+    #[error("gave up retrying command {0} while attaching to event stream")]
+    AttachFailed(String),
 }
 
 /// Error returned by [access point](crate::ap::RequestClient) and [station](crate::sta::RequestClient) clients if there is
