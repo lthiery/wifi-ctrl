@@ -8,7 +8,7 @@
 #![doc(
     html_logo_url = "https://www.rust-lang.org/logos/rust-logo-128x128-blk.png",
     html_favicon_url = "https://www.rust-lang.org/favicon.ico",
-    html_root_url = "https://docs.rs/wpactrl/"
+    html_root_url = "https://docs.rs/wifi-ctrl/"
 )]
 #![doc(test(attr(allow(unused_variables), deny(warnings))))]
 
