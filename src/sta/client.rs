@@ -48,7 +48,6 @@ pub(crate) enum Request {
     RemoveNetwork(RemoveNetwork, oneshot::Sender<Result>),
     SelectNetwork(usize, oneshot::Sender<Result<SelectResult>>),
     Shutdown,
-    SelectTimeout,
 }
 
 impl ShutdownSignal for Request {

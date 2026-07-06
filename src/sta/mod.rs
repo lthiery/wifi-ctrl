@@ -70,11 +70,12 @@ impl WifiStation {
     ) -> SocketResult {
         // We will collect scan requests and batch respond to them when results are ready
         let mut scan_requests = Vec::new();
-        let mut select_request = None;
+        let mut select_request: Option<SelectRequest> = None;
         loop {
             enum EventOrRequest {
                 Event(Event),
                 Request(Option<Request>),
+                SelectTimeout,
             }
 
             let event_or_request = tokio::select!(
@@ -84,6 +85,12 @@ impl WifiStation {
                 request = self.request_receiver.recv() => {
                     EventOrRequest::Request(request)
                 },
+                _ = async {
+                    match select_request.as_mut() {
+                        Some(select_request) => select_request.timeout.as_mut().await,
+                        None => std::future::pending().await,
+                    }
+                } => EventOrRequest::SelectTimeout,
             );
 
             match event_or_request {
@@ -110,6 +117,11 @@ impl WifiStation {
                     }
                     None => return Err(error::SocketError::ClientChannelClosed),
                 },
+                EventOrRequest::SelectTimeout => {
+                    if let Some(sender) = select_request.take() {
+                        sender.send(Err(ClientError::Timeout));
+                    }
+                }
             }
         }
     }
@@ -182,11 +194,6 @@ impl WifiStation {
                 let data_str = socket_handle.request(&custom, TryInto::try_into).await?;
                 debug!("Custom request response: {data_str:?}");
                 let _ = response_channel.send(data_str);
-            }
-            Request::SelectTimeout => {
-                if let Some(sender) = select_request.take() {
-                    sender.send(Err(ClientError::Timeout));
-                }
             }
             Request::Scan(response_channel) => {
                 // wpa_supplicant replies FAIL-BUSY when a scan is already in
@@ -271,7 +278,6 @@ impl WifiStation {
                                 }
                                 Ok(_) => {
                                     *select_request = Some(SelectRequest::new(
-                                        self.self_sender.clone(),
                                         response_sender,
                                         self.select_timeout,
                                     ));
@@ -304,26 +310,20 @@ fn conf_escape(raw: &str) -> String {
 
 struct SelectRequest {
     response: oneshot::Sender<Result<SelectResult>>,
-    timeout: tokio::task::JoinHandle<()>,
+    /// Polled as a branch of the main event loop; expiry resolves the request
+    /// with a timeout error
+    timeout: std::pin::Pin<Box<tokio::time::Sleep>>,
 }
 
 impl SelectRequest {
-    fn new(
-        sender: mpsc::Sender<Request>,
-        response: oneshot::Sender<Result<SelectResult>>,
-        timeout: Duration,
-    ) -> Self {
+    fn new(response: oneshot::Sender<Result<SelectResult>>, timeout: Duration) -> Self {
         Self {
             response,
-            timeout: tokio::task::spawn(async move {
-                tokio::time::sleep(timeout).await;
-                let _ = sender.send(Request::SelectTimeout).await;
-            }),
+            timeout: Box::pin(tokio::time::sleep(timeout)),
         }
     }
 
     fn send(self, result: Result<SelectResult>) {
-        self.timeout.abort();
         let _ = self.response.send(result);
     }
 }

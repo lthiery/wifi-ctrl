@@ -15,7 +15,7 @@ log = { version = "0" }
 serde =  {version = "1", features = ["derive"] }
 thiserror = "1"
 tempfile = "3"
-tokio = { version = "1", default-features = false, features = ["net",  "rt", "sync", "macros", "time"] }
+tokio = { version = "1", default-features = false, features = ["net", "sync", "macros", "time"] }
 
 [dev-dependencies]
 env_logger = "0"
