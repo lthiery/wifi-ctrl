@@ -1,6 +1,6 @@
 [package]
 name = "wifi-ctrl"
-version = "0.2.5"
+version = "0.3.0"
 edition = "2021"
 authors = ["Louis Thiery <thiery.louis@gmail.com>"]
 description = "Tokio-based runtimes for communicating with hostapd and wpa-supplicant"
