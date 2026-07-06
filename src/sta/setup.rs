@@ -15,9 +15,6 @@ pub struct WifiSetupGeneric<const C: usize = 32, const B: usize = 32> {
     wifi: WifiStation,
     /// Client for making requests
     request_client: RequestClient,
-    #[allow(unused)]
-    /// Client for receiving alerts
-    broadcast_receiver: BroadcastReceiver,
 }
 
 impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
@@ -26,7 +23,7 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
         let (self_sender, request_receiver) = mpsc::channel(C);
         let request_client = RequestClient::new(self_sender.clone());
         // setup the channel for broadcasts
-        let (broadcast_sender, broadcast_receiver) = broadcast::channel(B);
+        let (broadcast_sender, _) = broadcast::channel(B);
 
         Self {
             wifi: WifiStation {
@@ -38,7 +35,6 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
                 command_timeout: DEFAULT_COMMAND_TIMEOUT,
             },
             request_client,
-            broadcast_receiver,
         }
     }
 

@@ -50,14 +50,14 @@ impl<const N: usize> SocketHandle<N> {
                                 info!("Failed to connect to {socket_debug}, retrying for {} more minutes", RETRY_MINUTES-(loop_count+1)/60);
                             }
                             loop_count+=1;
-                            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                            tokio::time::sleep(Duration::from_secs(1)).await;
                         }
                     }
                 };
                 s
             } => resp,
             _ = async move {
-                tokio::time::sleep(tokio::time::Duration::from_secs(60*RETRY_MINUTES)).await;
+                tokio::time::sleep(Duration::from_secs(60*RETRY_MINUTES)).await;
             } => Err(error::SocketError::TimeoutOpeningSocket(socket_debug.to_string())),
             _ = async move {
                 loop {
@@ -101,20 +101,20 @@ impl<const N: usize> SocketHandle<N> {
     ) -> SocketResult<Result> {
         let n = self.socket.send(cmd).await?;
         if n != cmd.len() {
-            return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, cmd.len())));
+            return Ok(Err(ClientError::DidNotWriteAllBytes(n, cmd.len())));
         }
         let parse = |data: &str| {
             if accept(data) {
                 Ok(())
             } else {
-                Err(error::ParseError::NotOK)
+                Err(ParseError::NotOK)
             }
         };
         let timeout = self.command_timeout;
         tokio::select!(
             resp = self.parse_resp(parse) => resp,
             _ = tokio::time::sleep(timeout) =>
-                Ok(Err(error::ClientError::Timeout)),
+                Ok(Err(ClientError::Timeout)),
         )
     }
 
@@ -129,13 +129,13 @@ impl<const N: usize> SocketHandle<N> {
     {
         let n = self.socket.send(req.as_bytes()).await?;
         if n != req.len() {
-            return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, req.len())));
+            return Ok(Err(ClientError::DidNotWriteAllBytes(n, req.len())));
         }
         let timeout = self.command_timeout;
         tokio::select!(
             resp = self.parse_resp(parse) => resp,
             _ = tokio::time::sleep(timeout) =>
-                Ok(Err(error::ClientError::Timeout)),
+                Ok(Err(ClientError::Timeout)),
         )
     }
 

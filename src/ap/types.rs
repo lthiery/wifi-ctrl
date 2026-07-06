@@ -90,7 +90,7 @@ impl Status {
     /// assert_eq!(status.ssid, vec![r"WiFi-SSID", r#"¯\_(ツ)_/¯"#]);
     /// assert_eq!(status.num_sta, vec![0, 1]);
     /// ```
-    pub fn from_response(response: &str) -> std::result::Result<Self, ConfigError> {
+    pub fn from_response(response: &str) -> Result<Self, ConfigError> {
         crate::config::from_str(response)
     }
 }
@@ -129,7 +129,7 @@ impl Config {
     /// assert_eq!(config.wpa, 2);
     /// assert_eq!(config.ssid, "WiFi-SSID");
     /// ```
-    pub fn from_response(response: &str) -> std::result::Result<Self, ConfigError> {
+    pub fn from_response(response: &str) -> Result<Self, ConfigError> {
         crate::config::from_str(response)
     }
 }

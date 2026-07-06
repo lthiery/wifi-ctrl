@@ -27,3 +27,4 @@ futures = "0.3"
 
 [lints.rust]
 unsafe_code = "warn"
+unused_qualifications = "warn"

@@ -200,10 +200,13 @@ impl Display for KeyMgmt {
 /// `str::parse` to get `wpa_supplicant.conf` semantics (exactly 64 hex digits
 /// is a raw key, anything else a passphrase — unambiguous because a passphrase
 /// is at most 63 characters).
-#[derive(Clone, PartialEq, Eq)]
+// No PartialEq/Eq: nothing compares PSKs, and a derived comparison over key
+// material would not be constant-time. Add a constant-time compare (e.g.
+// `subtle::ConstantTimeEq`) if equality is ever needed.
+#[derive(Clone)]
 pub struct Psk(PskInner);
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 enum PskInner {
     Passphrase(String),
     Raw([u8; 32]),
