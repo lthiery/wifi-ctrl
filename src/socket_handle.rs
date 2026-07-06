@@ -84,11 +84,32 @@ impl<const N: usize> SocketHandle<N> {
     }
 
     pub async fn command(&mut self, cmd: &[u8]) -> SocketResult<Result> {
+        self.command_matching(cmd, |data| data == "OK").await
+    }
+
+    /// Like [`Self::command`] but with a custom set of accepted responses,
+    /// for commands whose success reply isn't just "OK".
+    pub async fn command_matching(
+        &mut self,
+        cmd: &[u8],
+        accept: impl Fn(&str) -> bool,
+    ) -> SocketResult<Result> {
         let n = self.socket.send(cmd).await?;
         if n != cmd.len() {
             return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, cmd.len())));
         }
-        self.expect_ok_with_default_timeout().await
+        let parse = |data: &str| {
+            if accept(data) {
+                Ok(())
+            } else {
+                Err(error::ParseError::NotOK)
+            }
+        };
+        tokio::select!(
+            resp = self.parse_resp(parse) => resp,
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) =>
+                Ok(Err(error::ClientError::Timeout)),
+        )
     }
 
     pub(crate) async fn request<'a, T, E, F>(
@@ -129,31 +150,4 @@ impl<const N: usize> SocketHandle<N> {
             }))
     }
 
-    async fn expect_ok(&mut self) -> SocketResult<Result> {
-        self.parse_resp(|data| {
-            // Scan (and only scan) return FAIL-BUSY when already scanning
-            if data == "OK" || data == "FAIL-BUSY" {
-                Ok(())
-            } else {
-                Err(error::ParseError::NotOK)
-            }
-        })
-        .await
-    }
-
-    async fn expect_ok_with_default_timeout(&mut self) -> SocketResult<Result> {
-        self.expect_ok_with_timeout(tokio::time::Duration::from_secs(1))
-            .await
-    }
-
-    pub async fn expect_ok_with_timeout(
-        &mut self,
-        timeout: tokio::time::Duration,
-    ) -> SocketResult<Result> {
-        tokio::select!(
-            resp = self.expect_ok() => resp,
-            _ =
-                tokio::time::sleep(timeout) => Ok(Err(error::ClientError::Timeout))
-        )
-    }
 }
