@@ -6,6 +6,7 @@ authors = ["Louis Thiery <thiery.louis@gmail.com>"]
 description = "Tokio-based runtimes for communicating with hostapd and wpa-supplicant"
 license = "Apache-2.0"
 repository = "https://github.com/novalabsxyz/wifi-ctrl"
+documentation = "https://docs.rs/wifi-ctrl"
 readme = "README.md"
 keywords = ["hostapd", "wpa-supplicant", "wpa_supplicant", "wpa-cli", "wifi"]
 rust-version = "1.64"
