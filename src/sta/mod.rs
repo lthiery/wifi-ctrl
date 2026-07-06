@@ -220,18 +220,27 @@ impl WifiStation {
                 let _ = response_channel.send(network_id);
             }
             Request::SetNetwork(id, param, response) => {
-                let cmd = format!(
-                    "SET_NETWORK {id} {}",
-                    match param {
-                        SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(&ssid)),
-                        SetNetwork::Bssid(bssid) => format!("bssid {}", conf_escape(&bssid)),
-                        SetNetwork::Psk(psk) => format!("psk {}", conf_escape(&psk)),
-                        SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {}", mgmt),
+                let field = match param {
+                    SetNetwork::Ssid(ssid) => Ok(format!("ssid {}", conf_escape(&ssid))),
+                    SetNetwork::Bssid(bssid) => bssid_command(&bssid),
+                    SetNetwork::Psk(psk) => psk_command(&psk).map(|psk| format!("psk {psk}")),
+                    SetNetwork::KeyMgmt(mgmt) => Ok(format!("key_mgmt {mgmt}")),
+                };
+                match field {
+                    Ok(field) => {
+                        let cmd = format!("SET_NETWORK {id} {field}");
+                        // Never log the PSK; the rest of the SET_NETWORK command is safe.
+                        if field.starts_with("psk ") {
+                            debug!("wpa_ctrl SET_NETWORK {id} psk <redacted>");
+                        } else {
+                            debug!("wpa_ctrl {cmd:?}");
+                        }
+                        let _ = response.send(socket_handle.command(cmd.as_bytes()).await?);
                     }
-                );
-                debug!("wpa_ctrl {cmd:?}");
-                let bytes = cmd.into_bytes();
-                let _ = response.send(socket_handle.command(&bytes).await?);
+                    Err(e) => {
+                        let _ = response.send(Err(e));
+                    }
+                }
             }
             Request::SaveConfig(response) => {
                 debug!("wpa_ctrl config saved");
@@ -302,6 +311,53 @@ fn conf_escape(raw: &str) -> String {
     }
 }
 
+/// Encode a PSK for `SET_NETWORK ... psk`.
+///
+/// A 64-character hex string is a precomputed PSK, which wpa_supplicant expects
+/// raw and unquoted. Anything else is a passphrase and must be quoted: unlike an
+/// SSID, a PSK passphrase cannot be hex-encoded, because wpa_supplicant reads an
+/// unquoted value as a raw key and would misinterpret the hex.
+///
+/// A WPA passphrase is 8-63 printable-ASCII characters (spaces included), all
+/// safe inside quotes. To keep the quoted form injection-safe we reject anything
+/// that could break out of it or that has no valid representation: a literal
+/// double-quote, control characters, or non-ASCII bytes all yield
+/// [`ClientError::InvalidPsk`] rather than a malformed command.
+fn psk_command(psk: &str) -> Result<String> {
+    if psk.len() == 64 && psk.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(psk.to_string());
+    }
+    if psk
+        .bytes()
+        .any(|b| !(0x20..=0x7e).contains(&b) || b == b'"')
+    {
+        return Err(ClientError::InvalidPsk);
+    }
+    Ok(format!("\"{psk}\""))
+}
+
+/// Build a `bssid` field for `SET_NETWORK ... bssid`.
+///
+/// wpa_supplicant expects the BSSID as a raw, unquoted MAC address (quoting it
+/// makes the parse fail). Because the value is unquoted, it must be validated as
+/// a canonical `xx:xx:xx:xx:xx:xx` MAC so it can't inject extra command tokens;
+/// anything else yields [`ClientError::InvalidBssid`].
+fn bssid_command(bssid: &str) -> Result<String> {
+    let well_formed = bssid.len() == 17
+        && bssid.bytes().enumerate().all(|(i, b)| {
+            if (i + 1) % 3 == 0 {
+                b == b':'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        });
+    if well_formed {
+        Ok(format!("bssid {bssid}"))
+    } else {
+        Err(ClientError::InvalidBssid)
+    }
+}
+
 struct SelectRequest {
     response: oneshot::Sender<Result<SelectResult>>,
     timeout: tokio::task::JoinHandle<()>,
@@ -325,5 +381,68 @@ impl SelectRequest {
     fn send(self, result: Result<SelectResult>) {
         self.timeout.abort();
         let _ = self.response.send(result);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn psk_passphrase_is_quoted() {
+        assert_eq!(psk_command("password123").unwrap(), "\"password123\"");
+    }
+
+    #[test]
+    fn psk_passphrase_with_spaces_is_quoted_not_hex() {
+        // A passphrase may contain spaces; it must stay a quoted string, since
+        // an unquoted/hex value would be read as a raw pre-shared key.
+        assert_eq!(
+            psk_command("correct horse battery").unwrap(),
+            "\"correct horse battery\""
+        );
+    }
+
+    #[test]
+    fn precomputed_psk_is_raw() {
+        let hex_psk = "8dbbe42cb44f21088fbb9cfbf24dc9b39787d6026d436b01b3ac7d34afb4416d";
+        assert_eq!(hex_psk.len(), 64);
+        assert_eq!(psk_command(hex_psk).unwrap(), hex_psk);
+    }
+
+    #[test]
+    fn psk_with_quote_is_rejected() {
+        // A literal quote could break out of the quoted value, so it is rejected
+        // rather than emitted into the SET_NETWORK command.
+        assert!(matches!(
+            psk_command("pass\"; extra"),
+            Err(ClientError::InvalidPsk)
+        ));
+    }
+
+    #[test]
+    fn psk_with_control_char_is_rejected() {
+        assert!(matches!(
+            psk_command("pass\nword"),
+            Err(ClientError::InvalidPsk)
+        ));
+    }
+
+    #[test]
+    fn bssid_is_sent_raw_and_unquoted() {
+        assert_eq!(
+            bssid_command("cc:7b:5c:1a:d2:21").unwrap(),
+            "bssid cc:7b:5c:1a:d2:21"
+        );
+    }
+
+    #[test]
+    fn malformed_bssid_is_rejected() {
+        for bad in ["cc:7b:5c:1a:d2", "cc:7b:5c:1a:d2:21 x", "not-a-mac", ""] {
+            assert!(
+                matches!(bssid_command(bad), Err(ClientError::InvalidBssid)),
+                "expected {bad:?} to be rejected"
+            );
+        }
     }
 }
