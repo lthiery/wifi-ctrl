@@ -9,14 +9,18 @@ repository = "https://github.com/novalabsxyz/wifi-ctrl"
 documentation = "https://docs.rs/wifi-ctrl"
 readme = "README.md"
 keywords = ["hostapd", "wpa-supplicant", "wpa_supplicant", "wpa-cli", "wifi"]
-rust-version = "1.70"
+rust-version = "1.71"
 
 [dependencies]
 hex = "0.4"
 log = { version = "0.4" }
 serde =  {version = "1", features = ["derive"] }
 thiserror = "1"
-tempfile = "3"
+# Capped below 3.16 for MSRV: 3.16+ resolves getrandom 0.3/0.4, which are (or
+# transitively pull, via wit-bindgen) edition-2024 crates -- unparseable by any
+# cargo before 1.85. <3.16 resolves getrandom 0.2, keeping the graph buildable
+# on the MSRV toolchain.
+tempfile = ">=3, <3.16"
 tokio = { version = "1.30", default-features = false, features = ["net", "sync", "macros", "time"] }
 
 [dev-dependencies]
