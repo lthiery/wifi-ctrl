@@ -60,12 +60,12 @@ jobs:
           default: true
           override: true
 
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-hack
-
-      # Verify the library builds on the declared rust-version. --no-dev-deps
-      # skips dev-only crates: they don't affect downstream consumers and their
-      # newer releases no longer resolve on this old toolchain.
-      - name: Check MSRV
-        run: cargo hack --no-dev-deps check
+      # Verify the library builds on the declared rust-version. Dev-only deps are
+      # stripped first: consumers never pull them, and env_logger 0.11's newer
+      # transitive deps no longer resolve on this old toolchain (which would
+      # otherwise fail lockfile generation before the check even runs).
+      - name: Check MSRV (library only)
+        run: |
+          awk '/^\[dev-dependencies\]/{skip=1} /^\[/ && !/^\[dev-dependencies\]/{skip=0} !skip' Cargo.toml > Cargo.toml.msrv
+          mv Cargo.toml.msrv Cargo.toml
+          cargo check
