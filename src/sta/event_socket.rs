@@ -19,7 +19,7 @@ impl EventSocket {
     pub(crate) async fn new<P>(
         socket: P,
         request_receiver: &mut mpsc::Receiver<Request>,
-        command_timeout: std::time::Duration,
+        command_timeout: Duration,
     ) -> SocketResult<(Vec<Request>, Self)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,

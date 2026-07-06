@@ -151,7 +151,7 @@ impl WifiStation {
             }
             Event::ScanFailed => {
                 while let Some(scan_request) = scan_requests.pop() {
-                    let _ = scan_request.send(Err(error::ClientError::Failed));
+                    let _ = scan_request.send(Err(ClientError::Failed));
                 }
             }
             Event::Connected => {
@@ -310,7 +310,7 @@ impl WifiStation {
     }
 }
 
-/// convert to wpa config format idealy a "quoted string"
+/// convert to wpa config format, ideally a "quoted string"
 /// in case of new-lines, quotes or emoji fall back to hex encoding the whole thing
 fn conf_escape(raw: &str) -> String {
     if raw.bytes().all(|b| b.is_ascii_graphic() && b != b'"') {

@@ -24,9 +24,6 @@ pub struct WifiSetupGeneric<const C: usize = 32, const B: usize = 32> {
     wifi: WifiAp,
     /// Client for making requests
     request_client: RequestClient,
-    #[allow(unused)]
-    /// Client for receiving alerts
-    broadcast_receiver: BroadcastReceiver,
 }
 
 impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
@@ -34,8 +31,8 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
         // setup the channel for client requests
         let (self_sender, request_receiver) = mpsc::channel(C);
         let request_client = RequestClient::new(self_sender.clone());
-        // setup the channel for broadcasts
-        let (broadcast_sender, broadcast_receiver) = broadcast::channel(B);
+        // setup the sender for broadcasts; receivers subscribe on demand
+        let broadcast_sender = broadcast::Sender::new(B);
 
         Self {
             wifi: WifiAp {
@@ -49,7 +46,6 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
                 attach_retry_delay: DEFAULT_ATTACH_RETRY_DELAY,
             },
             request_client,
-            broadcast_receiver,
         }
     }
 
