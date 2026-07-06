@@ -272,7 +272,7 @@ impl WifiStation {
                                 Err(e) => {
                                     let _ = response_sender.send(Err(e));
                                 }
-                                Ok(status) if status.get("id") == Some(&id.to_string()) => {
+                                Ok(status) if status.id == Some(id) => {
                                     let _ =
                                         response_sender.send(Ok(SelectResult::AlreadyConnected));
                                 }
