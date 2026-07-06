@@ -39,3 +39,10 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
+
+      # Build the docs the way docs.rs will, treating rustdoc warnings
+      # (broken intra-doc links, bad code fences, etc.) as errors
+      - name: Docs
+        run: cargo doc --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "-D warnings"
