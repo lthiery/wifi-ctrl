@@ -28,42 +28,39 @@ impl RequestClient {
         RequestClient { sender }
     }
 
-    pub async fn send_custom(&self, custom: String) -> Result<String> {
+    async fn request<T>(
+        &self,
+        build_request: impl FnOnce(oneshot::Sender<Result<T>>) -> Request,
+    ) -> Result<T> {
         let (response, request) = oneshot::channel();
-        self.sender.send(Request::Custom(custom, response)).await?;
+        self.sender.send(build_request(response)).await?;
         request.await?
+    }
+
+    pub async fn send_custom(&self, custom: String) -> Result<String> {
+        self.request(|response| Request::Custom(custom, response))
+            .await
     }
 
     pub async fn get_status(&self) -> Result<Status> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Status(response)).await?;
-        request.await?
+        self.request(Request::Status).await
     }
 
     pub async fn get_config(&self) -> Result<Config> {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Config(response)).await?;
-        request.await?
+        self.request(Request::Config).await
     }
 
     pub async fn enable(&self) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Enable(response)).await?;
-        request.await?
+        self.request(Request::Enable).await
     }
 
     pub async fn disable(&self) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender.send(Request::Disable(response)).await?;
-        request.await?
+        self.request(Request::Disable).await
     }
 
     pub async fn set_value(&self, key: &str, value: &str) -> Result {
-        let (response, request) = oneshot::channel();
-        self.sender
-            .send(Request::SetValue(key.into(), value.into(), response))
-            .await?;
-        request.await?
+        self.request(|response| Request::SetValue(key.into(), value.into(), response))
+            .await
     }
 
     pub async fn shutdown(&self) -> Result {
