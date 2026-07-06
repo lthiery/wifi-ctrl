@@ -19,12 +19,18 @@ impl EventSocket {
     pub(crate) async fn new<P>(
         socket: P,
         request_receiver: &mut mpsc::Receiver<Request>,
+        command_timeout: std::time::Duration,
     ) -> SocketResult<(Vec<Request>, Self)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
-        let (socket_handle, deferred_requests) =
-            SocketHandle::open(socket, "wpa_ctrl_async.sock", request_receiver).await?;
+        let (socket_handle, deferred_requests) = SocketHandle::open(
+            socket,
+            "wpa_ctrl_async.sock",
+            request_receiver,
+            command_timeout,
+        )
+        .await?;
         info!("wpa_ctrl attempting attach");
         socket_handle.socket.send(b"ATTACH").await?;
         Ok((deferred_requests, Self { socket_handle }))

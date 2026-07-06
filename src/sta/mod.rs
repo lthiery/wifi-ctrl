@@ -31,6 +31,8 @@ pub struct WifiStation {
     self_sender: mpsc::Sender<Request>,
     /// Timeout duration in case no valid select response is received
     select_timeout: Duration,
+    /// How long to wait for a reply to a control command/request
+    command_timeout: Duration,
 }
 
 impl WifiStation {
@@ -40,12 +42,17 @@ impl WifiStation {
             &self.socket_path,
             "mapper_wpa_ctrl_sync.sock",
             &mut self.request_receiver,
+            self.command_timeout,
         )
         .await?;
         // We start up a separate socket for receiving the "unexpected" events that
         // gets forwarded to us via the unsolicited_receiver
-        let (next_deferred_requests, unsolicited) =
-            EventSocket::new(&self.socket_path, &mut self.request_receiver).await?;
+        let (next_deferred_requests, unsolicited) = EventSocket::new(
+            &self.socket_path,
+            &mut self.request_receiver,
+            self.command_timeout,
+        )
+        .await?;
         deferred_requests.extend(next_deferred_requests);
         for request in deferred_requests {
             self.self_sender
@@ -70,11 +77,12 @@ impl WifiStation {
     ) -> SocketResult {
         // We will collect scan requests and batch respond to them when results are ready
         let mut scan_requests = Vec::new();
-        let mut select_request = None;
+        let mut select_request: Option<SelectRequest> = None;
         loop {
             enum EventOrRequest {
                 Event(Event),
                 Request(Option<Request>),
+                SelectTimeout,
             }
 
             let event_or_request = tokio::select!(
@@ -84,6 +92,12 @@ impl WifiStation {
                 request = self.request_receiver.recv() => {
                     EventOrRequest::Request(request)
                 },
+                _ = async {
+                    match select_request.as_mut() {
+                        Some(select_request) => select_request.timeout.as_mut().await,
+                        None => std::future::pending().await,
+                    }
+                } => EventOrRequest::SelectTimeout,
             );
 
             match event_or_request {
@@ -110,6 +124,11 @@ impl WifiStation {
                     }
                     None => return Err(error::SocketError::ClientChannelClosed),
                 },
+                EventOrRequest::SelectTimeout => {
+                    if let Some(sender) = select_request.take() {
+                        sender.send(Err(ClientError::Timeout));
+                    }
+                }
             }
         }
     }
@@ -182,11 +201,6 @@ impl WifiStation {
                 let data_str = socket_handle.request(&custom, TryInto::try_into).await?;
                 debug!("Custom request response: {data_str:?}");
                 let _ = response_channel.send(data_str);
-            }
-            Request::SelectTimeout => {
-                if let Some(sender) = select_request.take() {
-                    sender.send(Err(ClientError::Timeout));
-                }
             }
             Request::Scan(response_channel) => {
                 // wpa_supplicant replies FAIL-BUSY when a scan is already in
@@ -268,13 +282,12 @@ impl WifiStation {
                                 Err(e) => {
                                     let _ = response_sender.send(Err(e));
                                 }
-                                Ok(status) if status.get("id") == Some(&id.to_string()) => {
+                                Ok(status) if status.id == Some(id) => {
                                     let _ =
                                         response_sender.send(Ok(SelectResult::AlreadyConnected));
                                 }
                                 Ok(_) => {
                                     *select_request = Some(SelectRequest::new(
-                                        self.self_sender.clone(),
                                         response_sender,
                                         self.select_timeout,
                                     ));
@@ -285,7 +298,9 @@ impl WifiStation {
                     Some(_) => {
                         warn!("Select request already pending! Dropping this one.");
                         let _ = response_sender.send(Err(ClientError::PendingSelect));
-                        debug!("wpa_ctrl removed network {id}");
+                        debug!(
+                            "wpa_ctrl rejected select of network {id}: a select is already pending"
+                        );
                     }
                 };
             }
@@ -307,26 +322,20 @@ fn conf_escape(raw: &str) -> String {
 
 struct SelectRequest {
     response: oneshot::Sender<Result<SelectResult>>,
-    timeout: tokio::task::JoinHandle<()>,
+    /// Polled as a branch of the main event loop; expiry resolves the request
+    /// with a timeout error
+    timeout: std::pin::Pin<Box<tokio::time::Sleep>>,
 }
 
 impl SelectRequest {
-    fn new(
-        sender: mpsc::Sender<Request>,
-        response: oneshot::Sender<Result<SelectResult>>,
-        timeout: Duration,
-    ) -> Self {
+    fn new(response: oneshot::Sender<Result<SelectResult>>, timeout: Duration) -> Self {
         Self {
             response,
-            timeout: tokio::task::spawn(async move {
-                tokio::time::sleep(timeout).await;
-                let _ = sender.send(Request::SelectTimeout).await;
-            }),
+            timeout: Box::pin(tokio::time::sleep(timeout)),
         }
     }
 
     fn send(self, result: Result<SelectResult>) {
-        self.timeout.abort();
         let _ = self.response.send(result);
     }
 }

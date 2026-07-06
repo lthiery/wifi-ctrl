@@ -1,5 +1,7 @@
 use super::*;
 
+use std::time::Duration;
+
 pub(crate) struct EventSocket {
     socket_handle: SocketHandle<1024>,
 }
@@ -16,29 +18,40 @@ impl EventSocket {
         socket: P,
         request_receiver: &mut mpsc::Receiver<Request>,
         attach_options: &[String],
+        command_timeout: Duration,
+        attach_retries: usize,
+        attach_retry_delay: Duration,
     ) -> SocketResult<(Vec<Request>, Self)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
     {
-        let (mut socket_handle, deferred_requests) =
-            SocketHandle::open(socket, "hostapd_async.sock", request_receiver).await?;
+        let (mut socket_handle, deferred_requests) = SocketHandle::open(
+            socket,
+            "hostapd_async.sock",
+            request_receiver,
+            command_timeout,
+        )
+        .await?;
 
         let mut command = "ATTACH".to_string();
         for o in attach_options {
             command.push(' ');
             command.push_str(o);
         }
-        let mut attach = socket_handle.command(command.as_bytes()).await?;
-        while attach.is_err() {
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-            attach = socket_handle.command(command.as_bytes()).await?;
-        }
-
-        let mut log_level = socket_handle.command(b"LOG_LEVEL DEBUG").await?;
-        while log_level.is_err() {
-            tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-            log_level = socket_handle.command(b"LOG_LEVEL DEBUG").await?;
-        }
+        retry_command(
+            &mut socket_handle,
+            command.as_bytes(),
+            attach_retries,
+            attach_retry_delay,
+        )
+        .await?;
+        retry_command(
+            &mut socket_handle,
+            b"LOG_LEVEL DEBUG",
+            attach_retries,
+            attach_retry_delay,
+        )
+        .await?;
         info!("hostapd event stream registered");
         Ok((deferred_requests, Self { socket_handle }))
     }
@@ -58,4 +71,24 @@ impl EventSocket {
             Event::Unknown(data_str.to_string())
         })
     }
+}
+
+/// Send a control command, retrying on failure with a fixed delay up to
+/// `retries` times. Returns [`SocketError::AttachFailed`] once the attempts are
+/// exhausted so the runtime doesn't spin forever.
+async fn retry_command<const N: usize>(
+    socket_handle: &mut SocketHandle<N>,
+    command: &[u8],
+    retries: usize,
+    delay: Duration,
+) -> SocketResult {
+    for _ in 0..retries {
+        if socket_handle.command(command).await?.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(delay).await;
+    }
+    Err(error::SocketError::AttachFailed(
+        String::from_utf8_lossy(command).to_string(),
+    ))
 }

@@ -1,6 +1,7 @@
 use super::*;
 use error::{ClientError, ParseError};
 use std::io::ErrorKind;
+use std::time::Duration;
 use tokio::net::UnixDatagram;
 
 pub struct SocketHandle<const N: usize> {
@@ -10,6 +11,8 @@ pub struct SocketHandle<const N: usize> {
     /// Socket for synchronous messages
     pub socket: UnixDatagram,
     pub buffer: [u8; N],
+    /// How long to wait for a reply before giving up on a command/request
+    command_timeout: Duration,
 }
 
 const RETRY_MINUTES: u64 = 5;
@@ -19,6 +22,7 @@ impl<const N: usize> SocketHandle<N> {
         path: P,
         label: &str,
         request_channel: &mut mpsc::Receiver<S>,
+        command_timeout: Duration,
     ) -> SocketResult<(Self, Vec<S>)>
     where
         P: AsRef<std::path::Path> + std::fmt::Debug,
@@ -73,6 +77,7 @@ impl<const N: usize> SocketHandle<N> {
                 tmp_dir,
                 socket: socket?,
                 buffer: [0; N],
+                command_timeout,
             },
             deferred_requests,
         ))
@@ -105,9 +110,10 @@ impl<const N: usize> SocketHandle<N> {
                 Err(error::ParseError::NotOK)
             }
         };
+        let timeout = self.command_timeout;
         tokio::select!(
             resp = self.parse_resp(parse) => resp,
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(1)) =>
+            _ = tokio::time::sleep(timeout) =>
                 Ok(Err(error::ClientError::Timeout)),
         )
     }
@@ -125,7 +131,12 @@ impl<const N: usize> SocketHandle<N> {
         if n != req.len() {
             return Ok(Err(error::ClientError::DidNotWriteAllBytes(n, req.len())));
         }
-        self.parse_resp(parse).await
+        let timeout = self.command_timeout;
+        tokio::select!(
+            resp = self.parse_resp(parse) => resp,
+            _ = tokio::time::sleep(timeout) =>
+                Ok(Err(error::ClientError::Timeout)),
+        )
     }
 
     async fn parse_resp<'a, T, E, F>(&'a mut self, parse: F) -> SocketResult<Result<T>>
