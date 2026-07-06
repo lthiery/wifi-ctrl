@@ -31,7 +31,7 @@ pub type Result<T = ()> = std::result::Result<T, error::ClientError>;
 pub type SocketResult<T = ()> = std::result::Result<T, error::SocketError>;
 pub type ParseResult<T = ()> = std::result::Result<T, error::ParseError>;
 
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 
 pub(crate) trait ShutdownSignal {
     fn is_shutdown(&self) -> bool;
