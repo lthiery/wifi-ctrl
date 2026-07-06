@@ -260,15 +260,21 @@ impl WifiStation {
                             let _ = response_sender.send(Err(e));
                         } else {
                             debug!("wpa_ctrl selected network {id}");
-                            let status = Self::get_status(socket_handle).await?.unwrap_or_default();
-                            if status.get("id") == Some(&id.to_string()) {
-                                let _ = response_sender.send(Ok(SelectResult::AlreadyConnected));
-                            } else {
-                                *select_request = Some(SelectRequest::new(
-                                    self.self_sender.clone(),
-                                    response_sender,
-                                    self.select_timeout,
-                                ));
+                            match Self::get_status(socket_handle).await? {
+                                Err(e) => {
+                                    let _ = response_sender.send(Err(e));
+                                }
+                                Ok(status) if status.get("id") == Some(&id.to_string()) => {
+                                    let _ =
+                                        response_sender.send(Ok(SelectResult::AlreadyConnected));
+                                }
+                                Ok(_) => {
+                                    *select_request = Some(SelectRequest::new(
+                                        self.self_sender.clone(),
+                                        response_sender,
+                                        self.select_timeout,
+                                    ));
+                                }
                             }
                         }
                     }
