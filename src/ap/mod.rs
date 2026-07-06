@@ -110,7 +110,14 @@ impl WifiAp {
         socket_handle: &mut SocketHandle<N>,
         request: Request,
     ) -> SocketResult {
-        debug!("Handling request: {request:?}");
+        // A SetValue value may be a secret (e.g. wpa_passphrase), so keep it out
+        // of the log; the key is a config field name and safe to show.
+        match &request {
+            Request::SetValue(key, _, _) => {
+                debug!("Handling request: SetValue({key:?}, <redacted>)")
+            }
+            _ => debug!("Handling request: {request:?}"),
+        }
         match request {
             Request::Custom(custom, response_channel) => {
                 let data_str = socket_handle.request(&custom, TryInto::try_into).await?;

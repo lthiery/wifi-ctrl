@@ -24,7 +24,6 @@ pub struct WifiStation {
     socket_path: std::path::PathBuf,
     /// Channel for receiving requests
     request_receiver: mpsc::Receiver<Request>,
-    #[allow(unused)]
     /// Channel for broadcasting alerts
     broadcast_sender: broadcast::Sender<Broadcast>,
     /// Channel for sending requests to itself

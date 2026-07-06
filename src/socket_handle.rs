@@ -4,13 +4,13 @@ use std::io::ErrorKind;
 use std::time::Duration;
 use tokio::net::UnixDatagram;
 
-pub struct SocketHandle<const N: usize> {
+pub(crate) struct SocketHandle<const N: usize> {
     #[allow(unused)]
     /// Temporary directory for socket. If it drops, socket breaks.
     tmp_dir: tempfile::TempDir,
     /// Socket for synchronous messages
-    pub socket: UnixDatagram,
-    pub buffer: [u8; N],
+    pub(crate) socket: UnixDatagram,
+    buffer: [u8; N],
     /// How long to wait for a reply before giving up on a command/request
     command_timeout: Duration,
 }
@@ -83,18 +83,18 @@ impl<const N: usize> SocketHandle<N> {
         ))
     }
 
-    pub async fn recv(&mut self) -> SocketResult<&[u8]> {
+    pub(crate) async fn recv(&mut self) -> SocketResult<&[u8]> {
         let n = self.socket.recv(&mut self.buffer).await?;
         Ok(&self.buffer[..n])
     }
 
-    pub async fn command(&mut self, cmd: &[u8]) -> SocketResult<Result> {
+    pub(crate) async fn command(&mut self, cmd: &[u8]) -> SocketResult<Result> {
         self.command_matching(cmd, |data| data == "OK").await
     }
 
     /// Like [`Self::command`] but with a custom set of accepted responses,
     /// for commands whose success reply isn't just "OK".
-    pub async fn command_matching(
+    pub(crate) async fn command_matching(
         &mut self,
         cmd: &[u8],
         accept: impl Fn(&str) -> bool,
