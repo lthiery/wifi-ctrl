@@ -50,7 +50,7 @@ impl EventSocket {
             {
                 Event::WrongPsk
             } else {
-                Event::Unknown(data_str.into())
+                Event::Unknown(data_str.trim_end().into())
             },
         )
     }

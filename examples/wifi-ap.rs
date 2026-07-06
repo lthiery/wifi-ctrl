@@ -11,7 +11,7 @@ async fn main() -> Result {
     info!("Starting wifi-ap example");
 
     let mut network_interfaces = NetworkInterface::show().unwrap();
-    network_interfaces.sort_by(|a, b| a.index.cmp(&b.index));
+    network_interfaces.sort_by_key(|itf| itf.index);
     for (i, itf) in network_interfaces.iter().enumerate() {
         info!("[{:?}] {:?}", i, itf.name);
     }

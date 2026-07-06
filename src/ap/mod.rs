@@ -79,7 +79,7 @@ impl WifiAp {
                 request = self.request_receiver.recv() => EventOrRequest::Request(request),
             );
             match event_or_request {
-                EventOrRequest::Event(event) => self.handle_event(&mut socket_handle, event).await,
+                EventOrRequest::Event(event) => self.handle_event(event),
                 EventOrRequest::Request(request) => match request {
                     Some(Request::Shutdown) => return Ok(()),
                     Some(request) => Self::handle_request(&mut socket_handle, request).await?,
@@ -89,11 +89,7 @@ impl WifiAp {
         }
     }
 
-    async fn handle_event<const N: usize>(
-        &self,
-        _socket_handle: &mut SocketHandle<N>,
-        event_msg: Event,
-    ) {
+    fn handle_event(&self, event_msg: Event) {
         match event_msg {
             Event::ApStaConnected(mac) => self.broadcast(Broadcast::Connected(mac)),
             Event::ApStaDisconnected(mac) => self.broadcast(Broadcast::Disconnected(mac)),

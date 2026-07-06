@@ -3,10 +3,10 @@ use std::convert::Infallible;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::oneshot::error::RecvError;
-#[derive(Error, Debug)]
 
 /// Error returned by [access point](crate::ap::WifiAp::run) and [station](crate::sta::WifiStation::run) runners if there is
-/// problem with the control socket. e.g. if `wpa_suplicant` is restarted
+/// a problem with the control socket. e.g. if `wpa_supplicant` is restarted
+#[derive(Error, Debug)]
 pub enum SocketError {
     /// IO error from control socket
     #[error("io error: {0}")]
@@ -26,13 +26,13 @@ pub enum SocketError {
 }
 
 /// Error returned by [access point](crate::ap::RequestClient) and [station](crate::sta::RequestClient) clients if there is
-/// problem with the request e.g. asking to select a network you have not created a config for
+/// a problem with the request e.g. asking to select a network you have not created a config for
 #[derive(Error, Debug, Clone)]
 pub enum ClientError {
     /// Request failed  e.g. asking to select a network you have not created a config for
     #[error("Supplicant reported request failed")]
     Failed,
-    /// Error parsing the reponse from the socket. This is probably a bug in the [`wifi_ctrl`](crate) code.
+    /// Error parsing the response from the socket. This is probably a bug in the [`wifi_ctrl`](crate) code.
     #[error("error {error} parsing response: \n{failed_response}")]
     ParsingResponse {
         #[source]
@@ -42,17 +42,18 @@ pub enum ClientError {
     /// Timeout waiting for response to request on control socket
     #[error("timeout waiting for response")]
     Timeout,
-    /// Request was too big to fit in a datagram, mostlikely seen on bad custom requests
+    /// Request was too big to fit in a datagram, most likely seen on bad custom requests
     #[error("Request was too big only sent {0} of {1} bytes")]
     DidNotWriteAllBytes(usize, usize),
     /// The control socket is not connected at the moment, reconnect and try again
-    #[error("Runner task not runnning")]
+    #[error("Runner task not running")]
     RunnerNotRunning,
+    /// A select request is already pending; wait for it to resolve before selecting again
     #[error("Select already pending")]
     PendingSelect,
 }
 
-/// A sub error of [`ClientError`] returned when there is a problem parsing the reponse from
+/// A sub error of [`ClientError`] returned when there is a problem parsing the response from
 /// the socket. This is probably a bug in the [`wifi_ctrl`](crate) code.
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
@@ -81,7 +82,7 @@ impl<T> From<SendError<T>> for ClientError {
     }
 }
 
-// Happens when the runner half of a repsonse channel gets dropped
+// Happens when the runner half of a response channel gets dropped
 // e.g. if it is asked to shut down, or the socket dies
 impl From<RecvError> for ClientError {
     fn from(_: RecvError) -> Self {

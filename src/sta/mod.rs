@@ -1,5 +1,3 @@
-use core::str;
-
 use crate::error::ClientError;
 
 use super::*;
@@ -50,7 +48,10 @@ impl WifiStation {
             EventSocket::new(&self.socket_path, &mut self.request_receiver).await?;
         deferred_requests.extend(next_deferred_requests);
         for request in deferred_requests {
-            let _ = self.self_sender.send(request).await;
+            self.self_sender
+                .send(request)
+                .await
+                .expect("self_sender should never close as same struct owns both ends");
         }
         self.broadcast(Broadcast::Ready);
         self.run_internal(unsolicited, socket_handle).await
