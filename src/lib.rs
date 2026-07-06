@@ -1,9 +1,31 @@
 //! Tokio-based runtimes for communicating with hostapd and wpa-supplicant.
 //!
+//! Use [`sta`] to run a WiFi station (network client) against `wpa_supplicant`,
+//! and [`ap`] to run an access point against `hostapd`.
+//!
 //! # Quick Start
 //!
-//! Checkout the examples [on Github](https://github.com/novalabsxyz/wifi-ctrl) for a quick start.
+//! ```no_run
+//! use wifi_ctrl::sta;
 //!
+//! #[tokio::main]
+//! async fn main() -> wifi_ctrl::Result {
+//!     let mut setup = sta::WifiSetup::new();
+//!     setup.set_socket_path("/var/run/wpa_supplicant/wlan0");
+//!     let requester = setup.get_request_client();
+//!     let mut runtime = setup.complete();
+//!     tokio::spawn(async move { runtime.run().await });
+//!
+//!     let scan = requester.get_scan().await?;
+//!     for network in scan.iter() {
+//!         println!("{} {}", network.signal, network.name);
+//!     }
+//!     requester.shutdown().await
+//! }
+//! ```
+//!
+//! See the examples [on Github](https://github.com/novalabsxyz/wifi-ctrl) for
+//! complete station and access-point programs.
 
 #![doc(
     html_logo_url = "https://www.rust-lang.org/logos/rust-logo-128x128-blk.png",
