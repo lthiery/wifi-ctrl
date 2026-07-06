@@ -31,8 +31,8 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
         // setup the channel for client requests
         let (self_sender, request_receiver) = mpsc::channel(C);
         let request_client = RequestClient::new(self_sender.clone());
-        // setup the channel for broadcasts
-        let (broadcast_sender, _) = broadcast::channel(B);
+        // setup the sender for broadcasts; receivers subscribe on demand
+        let broadcast_sender = broadcast::Sender::new(B);
 
         Self {
             wifi: WifiAp {
