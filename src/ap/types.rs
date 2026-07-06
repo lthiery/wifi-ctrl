@@ -1,40 +1,46 @@
 use super::config::ConfigError;
 use serde::{Deserialize, Serialize};
 
-/// Status of the WiFi Station
+/// Status of the WiFi Access Point
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Status {
     pub state: String,
     pub phy: String,
     pub freq: u32,
-    pub num_sta_non_erp: u64,
-    pub num_sta_no_short_slot_time: u64,
-    pub num_sta_no_short_preamble: u64,
-    pub olbc: u64,
-    pub num_sta_ht_no_gf: u64,
-    pub num_sta_no_ht: u64,
-    pub num_sta_ht_20_mhz: u64,
-    pub num_sta_ht40_intolerant: u64,
-    pub olbc_ht: u64,
-    pub ht_op_mode: String,
-    pub cac_time_seconds: u64,
+    // The fields below vary by driver, security mode, and hostapd version, so
+    // each is optional: a missing key leaves it `None` rather than failing the
+    // whole parse.
+    pub num_sta_non_erp: Option<u64>,
+    pub num_sta_no_short_slot_time: Option<u64>,
+    pub num_sta_no_short_preamble: Option<u64>,
+    pub olbc: Option<u64>,
+    pub num_sta_ht_no_gf: Option<u64>,
+    pub num_sta_no_ht: Option<u64>,
+    pub num_sta_ht_20_mhz: Option<u64>,
+    pub num_sta_ht40_intolerant: Option<u64>,
+    pub olbc_ht: Option<u64>,
+    pub ht_op_mode: Option<String>,
+    pub cac_time_seconds: Option<u64>,
     pub cac_time_left_seconds: Option<u64>,
-    pub channel: u64,
-    pub secondary_channel: u64,
-    pub ieee80211n: u64,
-    pub ieee80211ac: u64,
-    pub ieee80211ax: u64,
-    pub beacon_int: u64,
-    pub dtim_period: u64,
-    // missing if not not ieee80211n
+    pub channel: Option<u64>,
+    pub secondary_channel: Option<u64>,
+    pub ieee80211n: Option<u64>,
+    pub ieee80211ac: Option<u64>,
+    pub ieee80211ax: Option<u64>,
+    pub beacon_int: Option<u64>,
+    pub dtim_period: Option<u64>,
     pub ht_caps_info: Option<String>,
     pub ht_mcs_bitmask: Option<String>,
     #[serde(default)] // missing if there are no rates
     pub supported_rates: String,
-    pub max_txpower: u64,
+    pub max_txpower: Option<u64>,
+    #[serde(default)]
     pub bss: Vec<String>,
+    #[serde(default)]
     pub bssid: Vec<String>,
+    #[serde(default)]
     pub ssid: Vec<String>,
+    #[serde(default)]
     pub num_sta: Vec<u32>,
 }
 

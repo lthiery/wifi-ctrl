@@ -117,11 +117,50 @@ impl NetworkResult {
     }
 }
 
-/// A HashMap of what is returned when running `wpa_cli status`.
-pub type Status = HashMap<String, String>;
+/// Parsed output of `wpa_cli status`.
+///
+/// The commonly-present fields are typed for convenience; everything the
+/// supplicant reports is also available untouched via [`Status::raw`] /
+/// [`Status::get`], so newer or driver-specific keys are never lost. Missing
+/// keys simply leave the corresponding field as `None` rather than failing the
+/// whole parse.
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct Status {
+    pub wpa_state: Option<String>,
+    pub ssid: Option<String>,
+    pub bssid: Option<String>,
+    pub id: Option<usize>,
+    pub freq: Option<u32>,
+    pub address: Option<String>,
+    pub ip_address: Option<String>,
+    pub key_mgmt: Option<String>,
+    pub mode: Option<String>,
+    /// Every key/value pair from the response, including those surfaced as
+    /// typed fields above.
+    pub raw: HashMap<String, String>,
+}
+
+impl Status {
+    /// Look up a raw status field the typed accessors don't cover.
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.raw.get(key).map(String::as_str)
+    }
+}
 
 pub(crate) fn parse_status(response: &str) -> ParseResult<Status> {
-    Ok(config::from_str(response)?)
+    let raw: HashMap<String, String> = config::from_str(response)?;
+    Ok(Status {
+        wpa_state: raw.get("wpa_state").cloned(),
+        ssid: raw.get("ssid").cloned(),
+        bssid: raw.get("bssid").cloned(),
+        id: raw.get("id").and_then(|v| v.parse().ok()),
+        freq: raw.get("freq").and_then(|v| v.parse().ok()),
+        address: raw.get("address").cloned(),
+        ip_address: raw.get("ip_address").cloned(),
+        key_mgmt: raw.get("key_mgmt").cloned(),
+        mode: raw.get("mode").cloned(),
+        raw,
+    })
 }
 
 #[derive(Debug)]
@@ -144,5 +183,42 @@ impl Display for KeyMgmt {
             KeyMgmt::IEEE8021X => "IEEE8021X".to_string(),
         };
         write!(f, "{}", str)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_status_types_known_fields_and_keeps_raw() {
+        let resp = "\
+bssid=cc:7b:5c:1a:d2:21
+freq=2412
+ssid=my-network
+id=3
+mode=station
+wpa_state=COMPLETED
+address=aa:bb:cc:dd:ee:ff
+ip_address=192.168.1.42
+some_future_key=42";
+        let status = parse_status(resp).unwrap();
+        assert_eq!(status.wpa_state.as_deref(), Some("COMPLETED"));
+        assert_eq!(status.ssid.as_deref(), Some("my-network"));
+        assert_eq!(status.id, Some(3));
+        assert_eq!(status.freq, Some(2412));
+        assert_eq!(status.ip_address.as_deref(), Some("192.168.1.42"));
+        // key_mgmt absent from the response -> None, not a parse failure
+        assert_eq!(status.key_mgmt, None);
+        // unknown keys are preserved via the raw escape hatch
+        assert_eq!(status.get("some_future_key"), Some("42"));
+    }
+
+    #[test]
+    fn parse_status_tolerates_sparse_response() {
+        let status = parse_status("wpa_state=SCANNING").unwrap();
+        assert_eq!(status.wpa_state.as_deref(), Some("SCANNING"));
+        assert_eq!(status.ssid, None);
+        assert_eq!(status.id, None);
     }
 }
