@@ -58,8 +58,6 @@ pub enum ClientError {
 pub enum ParseError {
     #[error("Didn't get expected literal \"OK\" response")]
     NotOK,
-    #[error("Too few columns in scan response")]
-    ScanResult,
     #[error("error parsing config: {0}")]
     ParseConfig(#[from] config::ConfigError),
     #[error("error parsing int: {0}")]
