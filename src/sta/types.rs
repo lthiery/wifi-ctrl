@@ -79,7 +79,7 @@ fn parse_get_network(resp: &str) -> ParseResult<String> {
 }
 
 impl NetworkResult {
-    pub async fn request_results<const N: usize>(
+    pub(crate) async fn request_results<const N: usize>(
         socket_handle: &mut SocketHandle<N>,
     ) -> SocketResult<Result<Vec<NetworkResult>>> {
         let response: String = match socket_handle
