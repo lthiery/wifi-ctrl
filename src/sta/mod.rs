@@ -188,7 +188,13 @@ impl WifiStation {
                 }
             }
             Request::Scan(response_channel) => {
-                match socket_handle.command(b"SCAN").await? {
+                // wpa_supplicant replies FAIL-BUSY when a scan is already in
+                // progress; the pending CTRL-EVENT-SCAN-RESULTS will answer
+                // this request too, so treat it as accepted
+                match socket_handle
+                    .command_matching(b"SCAN", |data| data == "OK" || data == "FAIL-BUSY")
+                    .await?
+                {
                     Ok(_) => {
                         scan_requests.push(response_channel);
                     }
