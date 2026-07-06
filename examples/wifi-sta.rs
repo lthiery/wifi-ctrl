@@ -11,12 +11,15 @@ async fn main() -> Result {
     info!("Starting wifi-sta example");
 
     let mut network_interfaces = NetworkInterface::show().unwrap();
-    network_interfaces.sort_by(|a, b| a.index.cmp(&b.index));
+    network_interfaces.sort_by_key(|itf| itf.index);
     for (i, itf) in network_interfaces.iter().enumerate() {
         info!("[{:?}] {:?}", i, itf.name);
     }
     let user_input = read_until_break().await;
-    let index = user_input.trim().parse::<usize>().expect("");
+    let index = user_input
+        .trim()
+        .parse::<usize>()
+        .expect("user should enter a number");
     let mut setup = sta::WifiSetup::new();
 
     let proposed_path = format!("/var/run/wpa_supplicant/{}", network_interfaces[index].name);
