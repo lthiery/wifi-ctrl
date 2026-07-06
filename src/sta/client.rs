@@ -78,10 +78,10 @@ impl RequestClient {
 
     async fn request<T>(
         &self,
-        make: impl FnOnce(oneshot::Sender<Result<T>>) -> Request,
+        build_request: impl FnOnce(oneshot::Sender<Result<T>>) -> Request,
     ) -> Result<T> {
         let (response, request) = oneshot::channel();
-        self.sender.send(make(response)).await?;
+        self.sender.send(build_request(response)).await?;
         request.await?
     }
 
