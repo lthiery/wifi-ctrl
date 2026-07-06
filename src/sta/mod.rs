@@ -234,18 +234,21 @@ impl WifiStation {
                 let _ = response_channel.send(network_id);
             }
             Request::SetNetwork(id, param, response) => {
-                let cmd = format!(
-                    "SET_NETWORK {id} {}",
-                    match param {
-                        SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(&ssid)),
-                        SetNetwork::Bssid(bssid) => format!("bssid {}", conf_escape(&bssid)),
-                        SetNetwork::Psk(psk) => format!("psk {}", conf_escape(&psk)),
-                        SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {}", mgmt),
-                    }
-                );
-                debug!("wpa_ctrl {cmd:?}");
-                let bytes = cmd.into_bytes();
-                let _ = response.send(socket_handle.command(&bytes).await?);
+                // Psk and Bssid are validated at construction, so every
+                // variant formats infallibly; Psk's Debug impl redacts the
+                // key wherever the request is logged.
+                let field = match &param {
+                    SetNetwork::Ssid(ssid) => format!("ssid {}", conf_escape(ssid)),
+                    SetNetwork::Bssid(bssid) => format!("bssid {bssid}"),
+                    SetNetwork::Psk(psk) => format!("psk {}", psk.to_field()),
+                    SetNetwork::KeyMgmt(mgmt) => format!("key_mgmt {mgmt}"),
+                };
+                let cmd = format!("SET_NETWORK {id} {field}");
+                match &param {
+                    SetNetwork::Psk(_) => debug!("wpa_ctrl SET_NETWORK {id} psk <redacted>"),
+                    _ => debug!("wpa_ctrl {cmd:?}"),
+                }
+                let _ = response.send(socket_handle.command(cmd.as_bytes()).await?);
             }
             Request::SaveConfig(response) => {
                 debug!("wpa_ctrl config saved");
@@ -334,5 +337,120 @@ impl SelectRequest {
 
     fn send(self, result: Result<SelectResult>) {
         let _ = self.response.send(result);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn psk_passphrase_is_quoted() {
+        assert_eq!(
+            Psk::passphrase("password123").unwrap().to_field(),
+            "\"password123\""
+        );
+    }
+
+    #[test]
+    fn psk_passphrase_with_spaces_is_quoted_not_hex() {
+        // A passphrase may contain spaces; it must stay a quoted string, since
+        // an unquoted/hex value would be read as a raw pre-shared key.
+        assert_eq!(
+            Psk::passphrase("correct horse battery").unwrap().to_field(),
+            "\"correct horse battery\""
+        );
+    }
+
+    #[test]
+    fn raw_psk_is_bare_hex() {
+        let hex_psk = "8dbbe42cb44f21088fbb9cfbf24dc9b39787d6026d436b01b3ac7d34afb4416d";
+        let mut key = [0u8; 32];
+        hex::decode_to_slice(hex_psk, &mut key).unwrap();
+        assert_eq!(Psk::raw(key).to_field(), hex_psk);
+    }
+
+    #[test]
+    fn psk_from_str_uses_conf_semantics() {
+        // Exactly 64 hex digits parses as a raw key, anything else as a
+        // passphrase; unambiguous since a passphrase is at most 63 chars.
+        let hex_psk = "8dbbe42cb44f21088fbb9cfbf24dc9b39787d6026d436b01b3ac7d34afb4416d";
+        assert_eq!(hex_psk.parse::<Psk>().unwrap().to_field(), hex_psk);
+        // 63 hex digits is a passphrase
+        assert_eq!(
+            hex_psk[..63].parse::<Psk>().unwrap().to_field(),
+            format!("\"{}\"", &hex_psk[..63])
+        );
+    }
+
+    #[test]
+    fn psk_with_quote_is_rejected() {
+        // A literal quote could break out of the quoted value, so it is rejected
+        // rather than emitted into the SET_NETWORK command.
+        assert!(matches!(
+            Psk::passphrase("pass\"; extra"),
+            Err(ClientError::InvalidPsk)
+        ));
+    }
+
+    #[test]
+    fn psk_with_control_char_is_rejected() {
+        assert!(matches!(
+            Psk::passphrase("pass\nword"),
+            Err(ClientError::InvalidPsk)
+        ));
+    }
+
+    #[test]
+    fn psk_outside_wpa_length_is_rejected() {
+        assert!(matches!(
+            Psk::passphrase("short"),
+            Err(ClientError::InvalidPsk)
+        ));
+        assert!(matches!(
+            Psk::passphrase("x".repeat(64)),
+            Err(ClientError::InvalidPsk)
+        ));
+    }
+
+    #[test]
+    fn psk_debug_is_redacted() {
+        let psk = Psk::passphrase("password123").unwrap();
+        assert_eq!(format!("{psk:?}"), "Psk(<redacted>)");
+        // The whole request is debug-logged by handle_request; the key must
+        // not appear through that path either.
+        let request = SetNetwork::Psk(psk);
+        assert!(!format!("{request:?}").contains("password123"));
+    }
+
+    #[test]
+    fn bssid_roundtrips_raw_and_unquoted() {
+        let bssid: Bssid = "cc:7b:5c:1a:d2:21".parse().unwrap();
+        assert_eq!(bssid.to_string(), "cc:7b:5c:1a:d2:21");
+        assert_eq!(Bssid::from([0xcc, 0x7b, 0x5c, 0x1a, 0xd2, 0x21]), bssid);
+    }
+
+    #[test]
+    fn bssid_is_canonicalized() {
+        // Mixed case parses but is always emitted lowercase
+        let bssid: Bssid = "CC:7B:5C:1A:D2:21".parse().unwrap();
+        assert_eq!(bssid.to_string(), "cc:7b:5c:1a:d2:21");
+    }
+
+    #[test]
+    fn malformed_bssid_is_rejected() {
+        for bad in [
+            "cc:7b:5c:1a:d2",
+            "cc:7b:5c:1a:d2:21:33",
+            "cc:7b:5c:1a:d2:21 x",
+            "cc:7b:5c:1a:d2:+1",
+            "not-a-mac",
+            "",
+        ] {
+            assert!(
+                matches!(bad.parse::<Bssid>(), Err(ClientError::InvalidBssid)),
+                "expected {bad:?} to be rejected"
+            );
+        }
     }
 }

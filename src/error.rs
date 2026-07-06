@@ -54,6 +54,13 @@ pub enum ClientError {
     /// A select request is already pending; wait for it to resolve before selecting again
     #[error("Select already pending")]
     PendingSelect,
+    /// A PSK passphrase was not 8-63 printable-ASCII characters, or contained
+    /// a double-quote, which cannot be safely encoded for wpa_supplicant
+    #[error("PSK is not a valid WPA passphrase")]
+    InvalidPsk,
+    /// A BSSID was not a well-formed `xx:xx:xx:xx:xx:xx` MAC address
+    #[error("BSSID is not a valid MAC address")]
+    InvalidBssid,
 }
 
 /// A sub error of [`ClientError`] returned when there is a problem parsing the response from
