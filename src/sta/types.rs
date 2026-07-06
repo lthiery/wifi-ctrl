@@ -1,4 +1,3 @@
-use super::error::ParseError;
 use super::{config, config::unprintf, warn, Result, SocketHandle};
 use super::{ParseResult, SocketResult};
 
@@ -52,7 +51,13 @@ impl ScanResult {
     pub fn vec_from_str(response: &str) -> ParseResult<Arc<Vec<ScanResult>>> {
         let mut results = Vec::new();
         for line in response.lines().skip(1) {
-            results.push(ScanResult::from_line(line).ok_or(ParseError::ScanResult)?);
+            // skip lines we can't parse so one odd entry doesn't fail the
+            // whole scan
+            if let Some(scan_result) = ScanResult::from_line(line) {
+                results.push(scan_result);
+            } else {
+                warn!("Invalid result from scan: {line}");
+            }
         }
         results.sort_by_key(|a| a.signal);
         Ok(Arc::new(results))
