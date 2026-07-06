@@ -105,6 +105,7 @@ impl RequestClient {
         self.request(Request::AddNetwork).await
     }
 
+    /// Set the network's pre-shared key. See [`Psk`] for the accepted forms.
     pub async fn set_network_psk(&self, network_id: usize, psk: Psk) -> Result {
         self.request(|response| Request::SetNetwork(network_id, SetNetwork::Psk(psk), response))
             .await
@@ -115,11 +116,13 @@ impl RequestClient {
             .await
     }
 
+    /// Pin the network to a specific access point by [`Bssid`].
     pub async fn set_network_bssid(&self, network_id: usize, bssid: Bssid) -> Result {
         self.request(|response| Request::SetNetwork(network_id, SetNetwork::Bssid(bssid), response))
             .await
     }
 
+    /// Set the network's key management mode; see [`KeyMgmt`].
     pub async fn set_network_keymgmt(&self, network_id: usize, mgmt: KeyMgmt) -> Result {
         self.request(|response| {
             Request::SetNetwork(network_id, SetNetwork::KeyMgmt(mgmt), response)

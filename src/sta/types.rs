@@ -197,9 +197,26 @@ impl Display for KeyMgmt {
 /// which form it means instead of the library guessing from the string's shape.
 ///
 /// Use [`Psk::passphrase`] or [`Psk::raw`] when the kind is known; parse with
-/// `str::parse` to get `wpa_supplicant.conf` semantics (exactly 64 hex digits
+/// [`str::parse`] to get `wpa_supplicant.conf` semantics (exactly 64 hex digits
 /// is a raw key, anything else a passphrase — unambiguous because a passphrase
 /// is at most 63 characters).
+///
+/// ```
+/// use wifi_ctrl::sta::Psk;
+///
+/// // The constructors say which form is meant.
+/// let psk = Psk::passphrase("correct horse battery")?;
+/// let _key = Psk::raw([0x42; 32]);
+///
+/// // Parsing follows wpa_supplicant.conf: anything but 64 hex digits is a passphrase,
+/// // and passphrases outside 8-63 printable-ASCII characters are rejected.
+/// let _parsed: Psk = "correct horse battery".parse()?;
+/// assert!("short".parse::<Psk>().is_err());
+///
+/// // Debug never reveals key material.
+/// assert_eq!(format!("{psk:?}"), "Psk(<redacted>)");
+/// # Ok::<(), wifi_ctrl::error::ClientError>(())
+/// ```
 // No PartialEq/Eq: nothing compares PSKs, and a derived comparison over key
 // material would not be constant-time. Add a constant-time compare (e.g.
 // `subtle::ConstantTimeEq`) if equality is ever needed.
@@ -219,6 +236,13 @@ impl Psk {
     /// the control socket has no escape for one inside a quoted value, so it
     /// has no safe representation. Anything else outside printable ASCII has
     /// no valid representation either. Both yield [`ClientError::InvalidPsk`].
+    ///
+    /// ```
+    /// # use wifi_ctrl::sta::Psk;
+    /// assert!(Psk::passphrase("password123").is_ok());
+    /// assert!(Psk::passphrase("2short").is_err());
+    /// assert!(Psk::passphrase("pass\"word123").is_err()); // no escape for a quote
+    /// ```
     pub fn passphrase(passphrase: impl Into<String>) -> Result<Self> {
         let passphrase = passphrase.into();
         let quotable = passphrase
@@ -273,6 +297,18 @@ impl std::fmt::Debug for Psk {
 /// fails to parse). Parsing up front and re-emitting the canonical
 /// `xx:xx:xx:xx:xx:xx` form via [`Display`] means caller input is never echoed
 /// into an unquoted command position.
+///
+/// ```
+/// use wifi_ctrl::sta::Bssid;
+///
+/// let bssid: Bssid = "CC:7B:5C:1A:D2:21".parse()?;
+/// // Always re-emitted in canonical lowercase form.
+/// assert_eq!(bssid.to_string(), "cc:7b:5c:1a:d2:21");
+/// assert_eq!(bssid, Bssid::from([0xcc, 0x7b, 0x5c, 0x1a, 0xd2, 0x21]));
+///
+/// assert!("cc:7b:5c:1a:d2".parse::<Bssid>().is_err());
+/// # Ok::<(), wifi_ctrl::error::ClientError>(())
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bssid([u8; 6]);
 
