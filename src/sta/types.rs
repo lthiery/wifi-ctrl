@@ -54,7 +54,7 @@ impl ScanResult {
         for line in response.lines().skip(1) {
             results.push(ScanResult::from_line(line).ok_or(ParseError::ScanResult)?);
         }
-        results.sort_by(|a, b| a.signal.cmp(&b.signal));
+        results.sort_by_key(|a| a.signal);
         Ok(Arc::new(results))
     }
 }
