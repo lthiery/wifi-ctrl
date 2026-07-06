@@ -41,7 +41,6 @@ pub(crate) enum Request {
     Status(oneshot::Sender<Result<Status>>),
     Networks(oneshot::Sender<Result<Vec<NetworkResult>>>),
     Scan(oneshot::Sender<Result<ScanResults>>),
-    ScanResults,
     AddNetwork(oneshot::Sender<Result<usize>>),
     SetNetwork(usize, SetNetwork, oneshot::Sender<Result>),
     SaveConfig(oneshot::Sender<Result>),
