@@ -288,7 +288,9 @@ impl WifiStation {
                     Some(_) => {
                         warn!("Select request already pending! Dropping this one.");
                         let _ = response_sender.send(Err(ClientError::PendingSelect));
-                        debug!("wpa_ctrl removed network {id}");
+                        debug!(
+                            "wpa_ctrl rejected select of network {id}: a select is already pending"
+                        );
                     }
                 };
             }

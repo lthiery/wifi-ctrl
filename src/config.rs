@@ -10,12 +10,12 @@ type Result<T> = std::result::Result<T, ConfigError>;
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 pub enum ConfigError {
     #[error("Missing '=' delimiter in config line")]
-    MissingDelimterEqual,
+    MissingDelimiterEqual,
     #[error("escape code is not made up of valid hex code")]
     InvalidEscape,
     #[error("escape code is incomplete")]
     IncompleteEscape,
-    #[error("escaped value is not valid uft8 after unescaping")]
+    #[error("escaped value is not valid utf8 after unescaping")]
     NonUtf8Escape,
     #[error("Value could not be decoded")]
     SerdeError(String),
@@ -61,7 +61,7 @@ where
     for line in s.trim().lines() {
         let (k, v) = line
             .split_once('=')
-            .ok_or(ConfigError::MissingDelimterEqual)?;
+            .ok_or(ConfigError::MissingDelimiterEqual)?;
         let (k, i) = if let Some((k, i)) = k.split_once('[') {
             if let Some((i, "")) = i.rsplit_once(']') {
                 (k, i.parse().map_err(ConfigError::custom)?)
