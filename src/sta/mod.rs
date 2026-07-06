@@ -88,8 +88,13 @@ impl WifiStation {
             match event_or_request {
                 EventOrRequest::Event(unsolicited_msg) => {
                     debug!("Unsolicited event: {unsolicited_msg:?}");
-                    self.handle_event(unsolicited_msg, &mut scan_requests, &mut select_request)
-                        .await
+                    self.handle_event(
+                        &mut socket_handle,
+                        unsolicited_msg,
+                        &mut scan_requests,
+                        &mut select_request,
+                    )
+                    .await?
                 }
                 EventOrRequest::Request(request) => match request {
                     Some(Request::Shutdown) => return Ok(()),
@@ -108,15 +113,21 @@ impl WifiStation {
         }
     }
 
-    async fn handle_event(
+    async fn handle_event<const N: usize>(
         &mut self,
+        socket_handle: &mut SocketHandle<N>,
         event: Event,
         scan_requests: &mut Vec<oneshot::Sender<Result<Arc<Vec<ScanResult>>>>>,
         select_request: &mut Option<SelectRequest>,
-    ) {
+    ) -> SocketResult {
         match event {
             Event::ScanComplete => {
-                let _ = self.self_sender.send(Request::ScanResults).await;
+                let scan_results = socket_handle
+                    .request("SCAN_RESULTS", ScanResult::vec_from_str)
+                    .await?;
+                while let Some(scan_request) = scan_requests.pop() {
+                    let _ = scan_request.send(scan_results.clone());
+                }
             }
             Event::ScanFailed => {
                 while let Some(scan_request) = scan_requests.pop() {
@@ -148,6 +159,7 @@ impl WifiStation {
                 self.broadcast(Broadcast::Unknown(msg));
             }
         }
+        Ok(())
     }
 
     async fn get_status<const N: usize>(
@@ -184,14 +196,6 @@ impl WifiStation {
                         let _ = response_channel.send(Err(e));
                     }
                 };
-            }
-            Request::ScanResults => {
-                let scan_results = socket_handle
-                    .request("SCAN_RESULTS", ScanResult::vec_from_str)
-                    .await?;
-                while let Some(scan_request) = scan_requests.pop() {
-                    let _ = scan_request.send(scan_results.clone());
-                }
             }
             Request::Networks(response_channel) => {
                 let network_list = NetworkResult::request_results(socket_handle).await?;
