@@ -1,5 +1,5 @@
-use super::{config, config::unprintf, warn, Result, SocketHandle};
 use super::{ParseResult, SocketResult};
+use super::{Result, SocketHandle, config, config::unprintf, warn};
 use crate::error::ClientError;
 
 use serde::Serialize;

@@ -126,7 +126,7 @@ impl WifiStation {
                 EventOrRequest::SelectTimeout => {
                     if let Some(sender) = select_request.take() {
                         sender.send(Err(ClientError::Timeout));
-                    }
+                    };
                 }
             }
         }

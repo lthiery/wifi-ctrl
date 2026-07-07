@@ -67,7 +67,7 @@ impl<const N: usize> SocketHandle<N> {
                         } else {
                             deferred_requests_handle.push(request);
                         }
-                    }
+                    };
                 }
             } => Err(error::SocketError::StartupAborted),
         );

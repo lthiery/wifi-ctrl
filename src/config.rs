@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use serde::de::value::MapDeserializer;
 use serde::de::{self, Error, IntoDeserializer, Visitor};
-use serde::{forward_to_deserialize_any, Deserialize};
+use serde::{Deserialize, forward_to_deserialize_any};
 
 type Result<T> = std::result::Result<T, ConfigError>;
 
