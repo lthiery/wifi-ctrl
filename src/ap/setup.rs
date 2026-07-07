@@ -14,25 +14,30 @@ const DEFAULT_ATTACH_RETRIES: usize = 240;
 /// Default delay between attach handshake attempts.
 const DEFAULT_ATTACH_RETRY_DELAY: Duration = Duration::from_millis(250);
 
-/// A convenient default type for setting up the WiFiAp process.
-pub type WifiSetup = WifiSetupGeneric<32, 32>;
+/// Default capacity of the request and broadcast channels.
+const DEFAULT_CHANNEL_SIZE: usize = 32;
 
-/// The generic WifiSetup struct which has generic constant parameters for adjusting queue size.
-/// WiFiSetup type is provided for convenience.
-pub struct WifiSetupGeneric<const C: usize = 32, const B: usize = 32> {
+/// Setup struct for the WiFiAp process.
+pub struct WifiSetup {
     /// Struct for handling runtime process
     wifi: WifiAp,
     /// Client for making requests
     request_client: RequestClient,
 }
 
-impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
+impl WifiSetup {
     pub fn new() -> Self {
+        Self::with_capacities(DEFAULT_CHANNEL_SIZE, DEFAULT_CHANNEL_SIZE)
+    }
+
+    /// Like [`Self::new`] but with explicit request and broadcast channel
+    /// capacities (both default to 32).
+    pub fn with_capacities(request_channel_size: usize, broadcast_channel_size: usize) -> Self {
         // setup the channel for client requests
-        let (self_sender, request_receiver) = mpsc::channel(C);
+        let (self_sender, request_receiver) = mpsc::channel(request_channel_size);
         let request_client = RequestClient::new(self_sender.clone());
         // setup the sender for broadcasts; receivers subscribe on demand
-        let broadcast_sender = broadcast::Sender::new(B);
+        let broadcast_sender = broadcast::Sender::new(broadcast_channel_size);
 
         Self {
             wifi: WifiAp {
@@ -89,7 +94,7 @@ impl<const C: usize, const B: usize> WifiSetupGeneric<C, B> {
     }
 }
 
-impl Default for WifiSetupGeneric {
+impl Default for WifiSetup {
     fn default() -> Self {
         Self::new()
     }

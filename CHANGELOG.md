@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are preserved. Driver/version-specific `ap::Status` fields are now `Option`
   and the BSS vectors default to empty, so a missing key no longer fails the
   whole parse.
+- **Breaking:** `WifiSetupGeneric<C, B>` is gone; `WifiSetup` is now a plain
+  struct. Channel capacities default to 32; use `WifiSetup::with_capacities()`
+  to construct with explicit request and broadcast channel sizes.
 - **Breaking:** renamed `ConfigError::MissingDelimterEqual` to
   `MissingDelimiterEqual`.
 - **Breaking:** removed the event channel; events are now handled directly by
