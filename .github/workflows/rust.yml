@@ -56,16 +56,9 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: "1.71.0"
+          toolchain: "1.85.0"
           default: true
           override: true
 
-      # Verify the library builds on the declared rust-version. Dev-only deps are
-      # stripped first: consumers never pull them, and env_logger 0.11's newer
-      # transitive deps no longer resolve on this old toolchain (which would
-      # otherwise fail lockfile generation before the check even runs).
-      - name: Check MSRV (library only)
-        run: |
-          awk '/^\[dev-dependencies\]/{skip=1} /^\[/ && !/^\[dev-dependencies\]/{skip=0} !skip' Cargo.toml > Cargo.toml.msrv
-          mv Cargo.toml.msrv Cargo.toml
-          cargo check
+      - name: Check MSRV
+        run: cargo check --all-targets --all-features

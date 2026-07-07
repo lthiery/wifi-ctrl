@@ -3,7 +3,7 @@ use env_logger::Env;
 use log::{error, info};
 use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 use tokio::io;
-use wifi_ctrl::{ap, Result};
+use wifi_ctrl::{Result, ap};
 
 #[tokio::main]
 async fn main() -> Result {
