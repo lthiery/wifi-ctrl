@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wpa_supplicant), precomputed 64-hex PSKs are sent raw, and BSSIDs are
   validated as canonical `xx:xx:xx:xx:xx:xx` addresses. Invalid input returns
   the new `ClientError::InvalidPsk` / `ClientError::InvalidBssid`.
-- The PSK is redacted from the `SET_NETWORK` debug log.
+- The PSK is redacted from the `SET_NETWORK` debug log, and hostapd `SetValue`
+  values (e.g. `wpa_passphrase`) are redacted from request logs.
 - Dropped the derived `PartialEq`/`Eq` on `Psk` — a derived comparison over key
   material would not be constant-time.
 
@@ -34,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Select timeouts are now polled inside the event loop instead of a spawned
   task, so the library no longer requires tokio's `rt` feature and the timeout
   can no longer queue behind pending requests.
-- Declared `rust-version = "1.64"` (MSRV) and pinned loose `"0"` dependency
-  requirements to real minor lines.
+- **Breaking:** upgraded the crate to Rust edition 2024; the MSRV is now
+  declared as `rust-version = "1.85"` and checked in CI.
+- Pinned loose `"0"` dependency requirements to real minor lines.
 
 ### Added
 - Control-socket command timeouts on `request()` (previously a reply-less
