@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - Unreleased
+## [0.3.0] - 2026-07-07
 
 ### Security
 - PSK/BSSID encoding hardened against injection into `SET_NETWORK` commands:
@@ -65,6 +65,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scan failures are handled instead of erroring.
 - Trailing tabs are no longer stripped off scan results.
 
+### Thanks
+- [@aj-bagwell](https://github.com/aj-bagwell) (AJ Bagwell)
+- [@abhay](https://github.com/abhay) (Abhay Kumar)
+
 ## [0.2.5] - 2024-05-22
 
 ### Added
@@ -81,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Grow buffer on event sockets.
 
+### Thanks
+- [@aj-bagwell](https://github.com/aj-bagwell) (AJ Bagwell)
+
 _Note: 0.2.4 was prepared but never tagged; its changes are included here._
 
 ## [0.2.3] - 2023-05-30
@@ -92,6 +99,9 @@ _Note: 0.2.4 was prepared but never tagged; its changes are included here._
 
 ### Changed
 - Documentation improvements.
+
+### Thanks
+- [@urdh](https://github.com/urdh) (Simon Sigurdhsson)
 
 ## [0.2.2] - 2023-05-29
 
@@ -147,7 +157,7 @@ _Note: 0.2.4 was prepared but never tagged; its changes are included here._
 ### Added
 - Initial release, extracted from a larger project.
 
-[0.3.0]: https://github.com/lthiery/wifi-ctrl/compare/v0.2.5...HEAD
+[0.3.0]: https://github.com/lthiery/wifi-ctrl/compare/v0.2.5...v0.3.0
 [0.2.5]: https://github.com/lthiery/wifi-ctrl/compare/v0.2.3...v0.2.5
 [0.2.3]: https://github.com/lthiery/wifi-ctrl/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/lthiery/wifi-ctrl/compare/v0.2.1...v0.2.2
